@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FraudBuster Integration Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .warning { background-color: #fff3cd; color: #856404; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        textarea {
+            width: 100%;
+            height: 150px;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 5px;
+            background-color: #f8f9fa;
+        }
+        .fraud-high { border-left: 5px solid #dc3545; }
+        .fraud-medium { border-left: 5px solid #ffc107; }
+        .fraud-low { border-left: 5px solid #28a745; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛡️ FraudBuster Integration Test</h1>
+        <p>This page tests the integration between Firebase Firestore, ModelManager, and FraudDetector.</p>
+        
+        <div class="test-section">
+            <h2>📊 System Status</h2>
+            <div id="firebase-status" class="status info">Initializing Firebase...</div>
+            <div id="model-status" class="status info">Loading model data...</div>
+            <div id="detector-status" class="status info">Initializing fraud detector...</div>
+        </div>
+        
+        <div class="test-section">
+            <h2>🔍 Model Information</h2>
+            <div id="model-info">Loading model metadata...</div>
+        </div>
+        
+        <div class="test-section">
+            <h2>🧪 Fraud Detection Test</h2>
+            <p>Enter a job posting description to test fraud detection:</p>
+            
+            <h3>Sample Fraudulent Job Posting:</h3>
+            <button onclick="loadSampleFraud()">Load Fraudulent Sample</button>
+            
+            <h3>Sample Legitimate Job Posting:</h3>
+            <button onclick="loadSampleLegit()">Load Legitimate Sample</button>
+            
+            <textarea id="job-text" placeholder="Enter job posting text here..."></textarea>
+            <br>
+            <button onclick="analyzeJob()">🔍 Analyze Job Posting</button>
+            <button onclick="quickCheck()">⚡ Quick Check</button>
+            
+            <div id="analysis-result"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>🔧 Debug Information</h2>
+            <button onclick="showDebugInfo()">Show Debug Info</button>
+            <div id="debug-info"></div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    
+    <!-- FraudBuster Scripts -->
+    <script src="firebase-config.js"></script>
+    <script src="fraud-detector.js"></script>
+    
+    <script>
+        let fraudDetector = null;
+        let initializationComplete = false;
+        
+        // Sample job postings for testing
+        const sampleFraudJob = `🚨 URGENT HIRING - WORK FROM HOME 🚨
+        
+Earn $5000+ per month with NO EXPERIENCE REQUIRED!
+        
+✅ Easy copy-paste work
+✅ Flexible hours - work from your phone
+✅ Immediate start - no interview needed
+✅ Guaranteed income
+        
+Just pay a small $99 registration fee to get started!
+Contact us on WhatsApp: +1234567890
+        
+Don't miss this amazing opportunity! Limited spots available!`;
+        
+        const sampleLegitJob = `Software Engineer - Frontend Development
+        
+We are seeking a skilled Frontend Developer to join our established technology team.
+        
+Requirements:
+• 3+ years of experience with React.js and JavaScript
+• Bachelor's degree in Computer Science or related field
+• Strong understanding of HTML, CSS, and responsive design
+• Experience with version control systems (Git)
+• Excellent problem-solving and communication skills
+        
+Responsibilities:
+• Develop and maintain user-facing web applications
+• Collaborate with UX/UI designers and backend developers
+• Write clean, maintainable, and well-documented code
+• Participate in code reviews and team meetings
+        
+Benefits:
+• Competitive salary based on experience
+• Health insurance and retirement plans
+• Professional development opportunities
+• Modern office environment with flexible work arrangements
+        
+Company: TechCorp Inc. (Founded 2010)
+Location: San Francisco, CA
+Website: www.techcorp.com`;
+        
+        async function initializeSystem() {
+            try {
+                // Initialize Firebase
+                updateStatus('firebase-status', 'Connecting to Firebase...', 'info');
+                await firebaseManager.initialize();
+                updateStatus('firebase-status', '✅ Firebase connected successfully', 'success');
+                
+                // Initialize Model Manager
+                updateStatus('model-status', 'Fetching model data from Firestore...', 'info');
+                const modelData = await modelManager.fetchModelData();
+                updateStatus('model-status', '✅ Model data loaded successfully', 'success');
+                
+                // Display model information
+                displayModelInfo(modelData.metadata);
+                
+                // Initialize Fraud Detector
+                updateStatus('detector-status', 'Initializing fraud detector...', 'info');
+                fraudDetector = new FraudDetector(modelManager);
+                await fraudDetector.initialize();
+                updateStatus('detector-status', '✅ Fraud detector ready', 'success');
+                
+                initializationComplete = true;
+                
+            } catch (error) {
+                console.error('Initialization error:', error);
+                updateStatus('firebase-status', '❌ Firebase connection failed', 'error');
+                updateStatus('model-status', '❌ Model loading failed', 'error');
+                updateStatus('detector-status', '❌ Detector initialization failed', 'error');
+            }
+        }
+        
+        function updateStatus(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = `status ${type}`;
+        }
+        
+        function displayModelInfo(metadata) {
+            const infoDiv = document.getElementById('model-info');
+            if (metadata) {
+                infoDiv.innerHTML = `
+                    <div class="status success">
+                        <strong>Model Type:</strong> ${metadata.modelType}<br>
+                        <strong>Accuracy:</strong> ${(metadata.accuracy * 100).toFixed(1)}%<br>
+                        <strong>Features:</strong> ${metadata.features?.join(', ') || 'N/A'}<br>
+                        <strong>Uploaded:</strong> ${new Date(metadata.uploadedAt).toLocaleString()}
+                    </div>
+                `;
+            } else {
+                infoDiv.innerHTML = '<div class="status warning">Model metadata not available</div>';
+            }
+        }
+        
+        function loadSampleFraud() {
+            document.getElementById('job-text').value = sampleFraudJob;
+        }
+        
+        function loadSampleLegit() {
+            document.getElementById('job-text').value = sampleLegitJob;
+        }
+        
+        async function analyzeJob() {
+            if (!initializationComplete) {
+                alert('System is still initializing. Please wait...');
+                return;
+            }
+            
+            const jobText = document.getElementById('job-text').value.trim();
+            if (!jobText) {
+                alert('Please enter a job posting to analyze.');
+                return;
+            }
+            
+            try {
+                const result = await fraudDetector.analyzeJobPosting(jobText);
+                displayAnalysisResult(result);
+            } catch (error) {
+                console.error('Analysis error:', error);
+                document.getElementById('analysis-result').innerHTML = 
+                    '<div class="status error">Analysis failed: ' + error.message + '</div>';
+            }
+        }
+        
+        function quickCheck() {
+            if (!fraudDetector) {
+                alert('Fraud detector not initialized yet.');
+                return;
+            }
+            
+            const jobText = document.getElementById('job-text').value.trim();
+            if (!jobText) {
+                alert('Please enter a job posting to check.');
+                return;
+            }
+            
+            const result = fraudDetector.quickFraudCheck(jobText);
+            document.getElementById('analysis-result').innerHTML = `
+                <div class="result status ${result.isSuspicious ? 'warning' : 'success'}">
+                    <h3>⚡ Quick Check Result</h3>
+                    <p><strong>Suspicious:</strong> ${result.isSuspicious ? 'Yes' : 'No'}</p>
+                    <p><strong>Suspicion Level:</strong> ${result.suspicionLevel}</p>
+                    ${result.matchedKeywords.length > 0 ? 
+                        `<p><strong>Matched Keywords:</strong> ${result.matchedKeywords.join(', ')}</p>` : ''}
+                </div>
+            `;
+        }
+        
+        function displayAnalysisResult(result) {
+            const resultDiv = document.getElementById('analysis-result');
+            const riskClass = result.riskLevel === 'high' ? 'fraud-high' : 
+                             result.riskLevel === 'medium' ? 'fraud-medium' : 'fraud-low';
+            
+            resultDiv.innerHTML = `
+                <div class="result ${riskClass}">
+                    <h3>🔍 Fraud Analysis Result</h3>
+                    <p><strong>Fraud Detected:</strong> ${result.isFraud ? '⚠️ YES' : '✅ NO'}</p>
+                    <p><strong>Risk Level:</strong> ${result.riskLevel.toUpperCase()}</p>
+                    <p><strong>Confidence:</strong> ${(result.confidence * 100).toFixed(1)}%</p>
+                    <p><strong>Fraud Score:</strong> ${result.fraudScore}</p>
+                    <p><strong>Legitimate Score:</strong> ${result.legitimateScore}</p>
+                    
+                    <h4>Reasons:</h4>
+                    <ul>
+                        ${result.reasons.map(reason => `<li>${reason}</li>`).join('')}
+                    </ul>
+                    
+                    ${result.matchedFraudPatterns.length > 0 ? `
+                        <h4>Fraud Patterns Detected:</h4>
+                        <ul>
+                            ${result.matchedFraudPatterns.map(pattern => 
+                                `<li><strong>${pattern.pattern}:</strong> ${pattern.matches.join(', ')} (Score: ${pattern.score.toFixed(2)})</li>`
+                            ).join('')}
+                        </ul>
+                    ` : ''}
+                    
+                    ${result.matchedLegitimatePatterns.length > 0 ? `
+                        <h4>Legitimate Indicators:</h4>
+                        <ul>
+                            ${result.matchedLegitimatePatterns.map(pattern => 
+                                `<li><strong>${pattern.pattern}:</strong> ${pattern.matches.join(', ')} (Score: ${pattern.score.toFixed(2)})</li>`
+                            ).join('')}
+                        </ul>
+                    ` : ''}
+                </div>
+            `;
+        }
+        
+        function showDebugInfo() {
+            const debugDiv = document.getElementById('debug-info');
+            const status = fraudDetector ? fraudDetector.getStatus() : { error: 'Detector not initialized' };
+            
+            debugDiv.innerHTML = `
+                <div class="status info">
+                    <h4>🔧 Debug Information</h4>
+                    <pre>${JSON.stringify({
+                        fraudDetectorStatus: status,
+                        firebaseInitialized: firebaseManager.isInitialized,
+                        modelCacheValid: modelManager.isCacheValid(),
+                        timestamp: new Date().toISOString()
+                    }, null, 2)}</pre>
+                </div>
+            `;
+        }
+        
+        // Initialize system when page loads
+        window.addEventListener('load', initializeSystem);
+    </script>
+</body>
+</html>

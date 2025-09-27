@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Job Posting - FraudBuster</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .job-posting {
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            background: #f9f9f9;
+        }
+        .suspicious-job {
+            background: #fff5f5;
+            border-color: #fed7d7;
+        }
+        .legitimate-job {
+            background: #f0fff4;
+            border-color: #c6f6d5;
+        }
+        .job-title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2d3748;
+            margin-bottom: 10px;
+        }
+        .company {
+            font-size: 18px;
+            color: #4a5568;
+            margin-bottom: 15px;
+        }
+        .salary {
+            font-size: 16px;
+            color: #38a169;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .description {
+            margin-top: 15px;
+        }
+        .test-controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px;
+            border: 2px solid #4299e1;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .test-button {
+            display: block;
+            width: 100%;
+            margin: 5px 0;
+            padding: 8px 12px;
+            background: #4299e1;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .test-button:hover {
+            background: #3182ce;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-controls">
+        <h3>FraudBuster Test</h3>
+        <button class="test-button" onclick="testExtension()">Test Extension</button>
+        <button class="test-button" onclick="simulateScan()">Simulate Scan</button>
+        <div id="test-status" style="margin-top: 10px; font-size: 12px;"></div>
+    </div>
+
+    <h1>Job Listings - Test Page</h1>
+    <p>This page contains various job postings to test the FraudBuster extension's fraud detection capabilities.</p>
+
+    <!-- Suspicious Job Posting -->
+    <div class="job-posting suspicious-job" data-job-id="suspicious-1">
+        <div class="job-title">URGENT! Work From Home - Earn $5000/Week!</div>
+        <div class="company">QuickCash Solutions LLC</div>
+        <div class="salary">$5,000 - $8,000 per week</div>
+        <div class="description">
+            <p><strong>IMMEDIATE START! NO EXPERIENCE REQUIRED!</strong></p>
+            <p>Make HUGE money working from home! We need people to process payments and handle money transfers. </p>
+            <p>Requirements:</p>
+            <ul>
+                <li>Must have bank account</li>
+                <li>Must be available to receive packages</li>
+                <li>Must be willing to forward payments</li>
+                <li>Age 18+ with valid ID</li>
+            </ul>
+            <p><strong>GUARANTEED $5000 first week!</strong> Contact us immediately at quickcash@tempmail.com</p>
+            <p>Send your full name, address, phone number, and bank details to get started TODAY!</p>
+        </div>
+    </div>
+
+    <!-- Legitimate Job Posting -->
+    <div class="job-posting legitimate-job" data-job-id="legitimate-1">
+        <div class="job-title">Software Engineer - Frontend Development</div>
+        <div class="company">TechCorp Inc.</div>
+        <div class="salary">$80,000 - $120,000 per year</div>
+        <div class="description">
+            <p>We are seeking a talented Frontend Developer to join our growing engineering team.</p>
+            <p>Responsibilities:</p>
+            <ul>
+                <li>Develop responsive web applications using React and TypeScript</li>
+                <li>Collaborate with UX/UI designers and backend developers</li>
+                <li>Write clean, maintainable code with proper testing</li>
+                <li>Participate in code reviews and technical discussions</li>
+            </ul>
+            <p>Requirements:</p>
+            <ul>
+                <li>3+ years of experience with JavaScript and modern frameworks</li>
+                <li>Strong understanding of HTML, CSS, and responsive design</li>
+                <li>Experience with version control (Git)</li>
+                <li>Bachelor's degree in Computer Science or related field</li>
+            </ul>
+            <p>We offer competitive salary, health benefits, 401k matching, and flexible work arrangements.</p>
+        </div>
+    </div>
+
+    <!-- Another Suspicious Job -->
+    <div class="job-posting suspicious-job" data-job-id="suspicious-2">
+        <div class="job-title">Mystery Shopper - Easy Money!</div>
+        <div class="company">Global Shopping Network</div>
+        <div class="salary">$300 - $500 per assignment</div>
+        <div class="description">
+            <p>Become a mystery shopper and earn easy money! We will send you checks to cash and shop with.</p>
+            <p>Instructions:</p>
+            <ul>
+                <li>We mail you a check for $2,500</li>
+                <li>Cash the check and keep $500 as your payment</li>
+                <li>Use $2,000 to purchase gift cards from specific stores</li>
+                <li>Send us the gift card codes via email</li>
+            </ul>
+            <p>This is 100% legitimate! Contact mysteryshopper@freemail.org with your mailing address.</p>
+            <p><strong>Start earning today!</strong></p>
+        </div>
+    </div>
+
+    <script>
+        function testExtension() {
+            const status = document.getElementById('test-status');
+            status.innerHTML = 'Testing extension...';
+            
+            // Check if extension is loaded
+            if (typeof window.fraudBusterExtension !== 'undefined') {
+                status.innerHTML = 'Extension detected! ✅';
+            } else {
+                status.innerHTML = 'Extension not detected. Please load the extension in Chrome.';
+            }
+        }
+        
+        function simulateScan() {
+            const status = document.getElementById('test-status');
+            status.innerHTML = 'Simulating page scan...';
+            
+            // Trigger a custom event that the extension might listen for
+            window.dispatchEvent(new CustomEvent('fraudbuster-test-scan', {
+                detail: { source: 'test-page' }
+            }));
+            
+            setTimeout(() => {
+                status.innerHTML = 'Scan simulation sent. Check extension popup.';
+            }, 1000);
+        }
+        
+        // Add some structured data for job postings
+        const jobData = {
+            "@context": "https://schema.org",
+            "@type": "JobPosting",
+            "title": "Software Engineer - Frontend Development",
+            "description": "We are seeking a talented Frontend Developer...",
+            "hiringOrganization": {
+                "@type": "Organization",
+                "name": "TechCorp Inc."
+            },
+            "baseSalary": {
+                "@type": "MonetaryAmount",
+                "currency": "USD",
+                "value": {
+                    "@type": "QuantitativeValue",
+                    "minValue": 80000,
+                    "maxValue": 120000,
+                    "unitText": "YEAR"
+                }
+            }
+        };
+        
+        // Add structured data to page
+        const script = document.createElement('script');
+        script.type = 'application/ld+json';
+        script.textContent = JSON.stringify(jobData);
+        document.head.appendChild(script);
+        
+        console.log('Test job page loaded with sample job postings');
+    </script>
+</body>
+</html>
