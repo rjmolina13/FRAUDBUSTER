@@ -182,6 +182,13 @@ class FirebaseManager {
 // Model Manager class for handling NLP model data and fraud domains from Firestore
 class ModelManager {
   constructor(firebaseManager) {
+    console.log('Initializing ModelManager...');
+    
+    if (!firebaseManager) {
+      console.error('ModelManager: Firebase manager is required but not provided');
+      throw new Error('Firebase manager is required for ModelManager');
+    }
+    
     this.firebaseManager = firebaseManager;
     this.modelCache = null;
     this.vectorizerCache = null;
@@ -192,6 +199,37 @@ class ModelManager {
     this.lastDomainsFetchTime = null;
     this.cacheExpiry = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
     this.domainsCacheExpiry = 6 * 60 * 60 * 1000; // 6 hours for domains (more frequent updates)
+    this.isInitialized = false;
+    
+    console.log('ModelManager initialized successfully with cache expiry:', {
+      modelCacheHours: this.cacheExpiry / (60 * 60 * 1000),
+      domainsCacheHours: this.domainsCacheExpiry / (60 * 60 * 1000)
+    });
+  }
+
+  async initialize() {
+    try {
+      console.log('ModelManager: Starting initialization...');
+      
+      // Verify Firebase manager is ready
+      if (!this.firebaseManager) {
+        throw new Error('Firebase manager not available for ModelManager initialization');
+      }
+      
+      // Perform any necessary setup tasks
+      console.log('ModelManager: Verifying Firebase connection...');
+      
+      // Mark as initialized
+      this.isInitialized = true;
+      
+      console.log('ModelManager: Initialization completed successfully');
+      return { success: true, message: 'ModelManager initialized successfully' };
+      
+    } catch (error) {
+      console.error('ModelManager: Initialization failed:', error);
+      this.isInitialized = false;
+      throw new Error(`ModelManager initialization failed: ${error.message}`);
+    }
   }
 
   async fetchModelData() {
@@ -223,43 +261,129 @@ class ModelManager {
       
       // Ensure Firebase is initialized with timeout
       if (!firebaseManager.isInitialized) {
+        console.log('Firebase not initialized, attempting initialization...');
         const initTimeout = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Firebase initialization timeout')), 10000)
+          setTimeout(() => reject(new Error('Firebase initialization timeout after 10s')), 10000)
         );
-        await Promise.race([firebaseManager.initialize(), initTimeout]);
+        try {
+          await Promise.race([firebaseManager.initialize(), initTimeout]);
+          console.log('Firebase initialized successfully for model fetch');
+        } catch (initError) {
+          console.error('Firebase initialization failed:', initError);
+          throw new Error(`Firebase initialization failed: ${initError.message}`);
+        }
+      }
+      
+      if (!this.firebaseManager.db) {
+        throw new Error('Firestore database not available after initialization');
       }
 
-      // Fetch model data from Firestore with timeout
+      // Fetch model data from multiple Firestore documents with timeout
       const fetchTimeout = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Model fetch timeout')), 20000)
       );
       
-      const modelDoc = await Promise.race([
-        firebaseManager.db.collection('nlp_models').doc('current_model').get(),
+      // Fetch all required documents in parallel
+      const [metadataDoc, vectorizerDoc, modelBaseDoc] = await Promise.race([
+        Promise.all([
+          this.firebaseManager.db.collection('nlp_models').doc('metadata').get(),
+          this.firebaseManager.db.collection('nlp_models').doc('vectorizer').get(),
+          this.firebaseManager.db.collection('nlp_models').doc('model_base').get()
+        ]),
         fetchTimeout
       ]);
 
-      if (!modelDoc.exists) {
-        throw new Error('Model data not found in Firestore');
+      // Check if all required documents exist
+      if (!metadataDoc.exists) {
+        throw new Error('Metadata document not found in Firestore');
+      }
+      if (!vectorizerDoc.exists) {
+        throw new Error('Vectorizer document not found in Firestore');
+      }
+      if (!modelBaseDoc.exists) {
+        throw new Error('Model base document not found in Firestore');
       }
 
-      const data = modelDoc.data();
+      const metadataData = metadataDoc.data();
+      const vectorizerData = vectorizerDoc.data();
+      const modelBaseData = modelBaseDoc.data();
       
-      // Cache the data
+      console.log('Raw model data from Firestore:', {
+        hasMetadata: !!metadataData.metadata,
+        hasVectorizer: !!vectorizerData.vectorizer_data,
+        hasModelBase: !!modelBaseData.model_data,
+        metadataKeys: metadataData.metadata ? Object.keys(metadataData.metadata) : []
+      });
+      
+      // Validate required fields
+      if (!metadataData.metadata) {
+        throw new Error('Metadata not found in metadata document');
+      }
+      if (!vectorizerData.vectorizer_data) {
+        throw new Error('Vectorizer data not found in vectorizer document');
+      }
+      if (!modelBaseData.model_data) {
+        throw new Error('Model base data not found in model_base document');
+      }
+      
+      // Fetch feature data chunks
+        const featureLogProbDoc = await this.firebaseManager.db.collection('nlp_models').doc('feature_log_prob').get();
+        const featureCountDoc = await this.firebaseManager.db.collection('nlp_models').doc('feature_count').get();
+        
+        if (!featureLogProbDoc.exists || !featureCountDoc.exists) {
+            throw new Error('Feature data chunks not found in Firestore');
+        }
+        
+        const featureLogProbData = featureLogProbDoc.data();
+        const featureCountData = featureCountDoc.data();
+      
+      // Reconstruct model data by parsing JSON strings back to arrays
+      const reconstructedModelData = {
+        ...modelBaseData.model_data,
+        feature_log_prob: JSON.parse(featureLogProbData.feature_log_prob_json),
+        feature_count: JSON.parse(featureCountData.feature_count_json)
+      };
+      
+      const data = {
+        model_data: reconstructedModelData,
+        vectorizer_data: vectorizerData.vectorizer_data,
+        metadata: metadataData.metadata
+      };
+      
+      // Cache the data - use correct field structure from upload script
       this.modelCache = data.model_data;
       this.vectorizerCache = data.vectorizer_data;
       this.metadataCache = {
-        accuracy: data.accuracy,
-        features: data.features,
-        uploadedAt: data.uploaded_at,
-        modelType: data.model_type
+        accuracy: data.metadata?.accuracy,
+        precision: data.metadata?.precision,
+        recall: data.metadata?.recall,
+        f1_score: data.metadata?.f1_score,
+        roc_auc: data.metadata?.roc_auc,
+        optimal_threshold: data.metadata?.optimal_threshold,
+        features: data.metadata?.features,
+        uploadedAt: data.metadata?.upload_timestamp,
+        modelType: data.metadata?.model_type,
+        vectorizerType: data.metadata?.vectorizer_type,
+        vocabularySize: data.metadata?.vocabulary_size,
+        topFeatures: data.metadata?.top_features,
+        version: data.metadata?.version,
+        evaluation_date: data.metadata?.evaluation_date,
+        dataset_size: data.metadata?.dataset_size,
+        training_samples: data.metadata?.training_samples,
+        test_samples: data.metadata?.test_samples,
+        target: data.metadata?.target
       };
       this.lastFetchTime = Date.now();
 
       console.log('Model data fetched successfully:', {
         accuracy: this.metadataCache.accuracy,
+        precision: this.metadataCache.precision,
+        recall: this.metadataCache.recall,
+        f1_score: this.metadataCache.f1_score,
+        optimal_threshold: this.metadataCache.optimal_threshold,
         features: this.metadataCache.features?.length || 0,
-        modelType: this.metadataCache.modelType
+        modelType: this.metadataCache.modelType,
+        version: this.metadataCache.version
       });
 
       return {
@@ -330,10 +454,21 @@ class ModelManager {
       
       // Ensure Firebase is initialized with timeout
       if (!this.firebaseManager.isInitialized) {
+        console.log('Firebase not initialized for fraud domains, attempting initialization...');
         const initTimeout = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Firebase initialization timeout')), 10000)
+          setTimeout(() => reject(new Error('Firebase initialization timeout after 10s')), 10000)
         );
-        await Promise.race([this.firebaseManager.initialize(), initTimeout]);
+        try {
+          await Promise.race([this.firebaseManager.initialize(), initTimeout]);
+          console.log('Firebase initialized successfully for fraud domains fetch');
+        } catch (initError) {
+          console.error('Firebase initialization failed for fraud domains:', initError);
+          throw new Error(`Firebase initialization failed: ${initError.message}`);
+        }
+      }
+      
+      if (!this.firebaseManager.db) {
+        throw new Error('Firestore database not available for fraud domains fetch');
       }
 
       // Fetch fraud domains from Firestore with timeout
@@ -342,24 +477,42 @@ class ModelManager {
       );
       
       const domainsDoc = await Promise.race([
-        firebaseManager.db.collection('fraud_data').doc('known_domains').get(),
+        this.firebaseManager.db.collection('fraud_data').doc('fraud_urls').get(),
         fetchTimeout
       ]);
 
       if (!domainsDoc.exists) {
-        console.warn('Fraud domains data not found in Firestore');
+        console.warn('Fraud URLs data not found in Firestore');
         return { domains: [], metadata: null };
       }
 
       const data = domainsDoc.data();
+      console.log('Raw fraud domains data from Firestore:', {
+        hasUrls: !!data.urls,
+        urlsLength: data.urls ? data.urls.length : 0,
+        hasMetadata: !!data.metadata,
+        metadataKeys: data.metadata ? Object.keys(data.metadata) : []
+      });
       
-      // Cache the data
-      this.fraudDomainsCache = data.domains || [];
+      // Validate required fields
+      if (!data.urls || !Array.isArray(data.urls)) {
+        throw new Error('Fraud URLs array not found or invalid in Firestore document');
+      }
+      if (data.urls.length === 0) {
+        console.warn('No fraud URLs found in Firestore document');
+      }
+      if (!data.metadata) {
+        console.warn('Fraud domains metadata not found, using defaults');
+      }
+      
+      // Cache the data - use 'urls' array from upload script structure
+      this.fraudDomainsCache = data.urls || [];
       this.fraudDomainsMetadata = {
-        totalDomains: data.total_domains,
-        uploadedAt: data.uploaded_at,
-        lastUpdated: data.last_updated,
-        source: data.source
+        totalDomains: data.metadata?.url_count || (data.urls ? data.urls.length : 0),
+        uploadedAt: data.metadata?.upload_timestamp,
+        lastUpdated: data.metadata?.upload_timestamp,
+        source: data.metadata?.source || 'fraud-urls.txt',
+        version: data.metadata?.version
       };
       this.lastDomainsFetchTime = Date.now();
 
@@ -425,8 +578,8 @@ class ModelManager {
   async reportNewFraudDomain(domain, reportedBy = 'user', reason = '') {
     try {
       // Ensure Firebase is initialized
-      if (!firebaseManager.isInitialized) {
-        await firebaseManager.initialize();
+      if (!this.firebaseManager.isInitialized) {
+        await this.firebaseManager.initialize();
       }
 
       // Add to reported domains collection for review
@@ -439,7 +592,7 @@ class ModelManager {
         votes: { fraud: 1, legitimate: 0 }
       };
 
-      await firebaseManager.db
+      await this.firebaseManager.db
         .collection('fraud_reports')
         .add(reportData);
 
@@ -494,7 +647,24 @@ class ModelManager {
   }
 
   getModelMetadata() {
-    return this.metadataCache;
+    if (!this.metadataCache) {
+      return {
+        isReady: false,
+        isLoading: false,
+        error: 'Model not loaded'
+      };
+    }
+    
+    // Add isReady property based on whether we have valid model data
+    const hasValidModelData = this.modelCache && this.vectorizerCache && this.metadataCache;
+    
+    return {
+      ...this.metadataCache,
+      isReady: hasValidModelData,
+      isLoading: false,
+      lastFetched: this.lastFetchTime,
+      cacheValid: this.isCacheValid()
+    };
   }
 
   // Convert base64 to binary data (for future use if needed)

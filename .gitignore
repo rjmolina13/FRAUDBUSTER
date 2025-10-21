@@ -2,9 +2,33 @@
 .trae/
 chrome-extensions-samples/
 docs/
+.stash/
+
+# Firebase sensitive files
+*firebase-adminsdk*.json
+
+# Test and development artifacts
+test-*/
+playwright-report/
+test_*.html
+test_*.js
+
+# Development and temporary files
+hello.html
+hello_extensions.png
+index.html
+firebase-details.txt
+fraud-urls.txt
+legitimate-sites_logs/
+reload-extension-instructions.md
+dist-report.md
+thesis-recommendations.md
+thesis_docs/
 
 # Node.js dependencies
 node_modules/
+nlp_module/
+nlp_module/*
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -19,7 +43,7 @@ __pycache__/
 .Python
 build/
 develop-eggs/
-dist/
+# dist/
 downloads/
 eggs/
 .eggs/

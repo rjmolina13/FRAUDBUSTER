@@ -1,0 +1,87 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // FraudBuster Chrome Extension Security Rules
+    // These rules allow the extension to function while maintaining security
+    
+    // Allow read access to NLP models and fraud data for all authenticated users (including anonymous)
+    match /nlp_models/{document} {
+      allow read: if request.auth != null;
+    }
+    
+    match /fraud_data/{document} {
+      allow read: if request.auth != null;
+    }
+    
+    // Allow read/write access to user feedback and reports for authenticated users
+    match /fraud_reports/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    match /user_feedback/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    match /user_votes/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow read/write access to user reports for authenticated users
+    match /user_reports/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow read/write access to fraud URLs collection for authenticated users
+    match /fraud_urls/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow read/write access to URL reports for authenticated users
+    match /url_reports/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Dynamic False Positive Reduction System collections
+    // Allow read/write access to learning patterns for authenticated users
+    match /learning_patterns/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow read/write access to page classification rules for authenticated users
+    match /page_classification_rules/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow read/write access to false positive patterns for authenticated users
+    match /false_positive_patterns/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow read/write access to page analysis cache for authenticated users
+    match /page_analysis_cache/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow read/write access to user feedback history for authenticated users
+    match /user_feedback_history/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow users to manage their own user documents
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Allow anonymous users to create user documents
+    match /users/{userId} {
+      allow create: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
