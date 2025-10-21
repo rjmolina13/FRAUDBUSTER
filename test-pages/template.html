@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JobBoard Pro - Page {{PAGE_NUMBER}}</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>JobBoard Pro</h1>
+            <p>Find Your Dream Job Today - Page {{PAGE_NUMBER}} of 15</p>
+        </header>
+
+        <nav class="navigation">
+            <a href="{{PREV_PAGE}}" class="nav-button {{PREV_DISABLED}}">← Previous</a>
+            <div class="page-info">Page {{PAGE_NUMBER}} of 15</div>
+            <a href="{{NEXT_PAGE}}" class="nav-button {{NEXT_DISABLED}}">Next →</a>
+        </nav>
+
+        <main class="job-listings">
+            {{JOB_LISTINGS}}
+        </main>
+
+        <nav class="navigation">
+            <a href="{{PREV_PAGE}}" class="nav-button {{PREV_DISABLED}}">← Previous</a>
+            <div class="page-info">Page {{PAGE_NUMBER}} of 15</div>
+            <a href="{{NEXT_PAGE}}" class="nav-button {{NEXT_DISABLED}}">Next →</a>
+        </nav>
+
+        <footer class="footer">
+            <p>&copy; 2024 JobBoard Pro. This is a test site for demonstration purposes.</p>
+            <p>Sample job postings mixing legitimate and fraudulent examples for testing.</p>
+        </footer>
+    </div>
+
+    <script>
+        // Add some interactivity
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add hover effects for job cards
+            const jobCards = document.querySelectorAll('.job-card');
+            jobCards.forEach(card => {
+                card.addEventListener('mouseenter', function() {
+                    this.style.transform = 'translateY(-2px)';
+                });
+                
+                card.addEventListener('mouseleave', function() {
+                    this.style.transform = 'translateY(0)';
+                });
+            });
+        });
+    </script>
+</body>
+</html>

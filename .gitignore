@@ -8,15 +8,13 @@ docs/
 *firebase-adminsdk*.json
 
 # Test and development artifacts
-test-*/
+
 playwright-report/
-test_*.html
-test_*.js
+
 
 # Development and temporary files
 hello.html
 hello_extensions.png
-index.html
 firebase-details.txt
 fraud-urls.txt
 legitimate-sites_logs/
