@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FraudBuster Enhanced Logging Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .job-posting {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-button {
+            background: #007cba;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        .test-button:hover {
+            background: #005a87;
+        }
+        .console-note {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 FraudBuster Enhanced Logging Test Page</h1>
+    
+    <div class="console-note">
+        <strong>📝 Instructions:</strong>
+        <ol>
+            <li>Open Chrome DevTools (F12) and go to the Console tab</li>
+            <li>Load the FraudBuster extension</li>
+            <li>Click the test buttons below to trigger fraud analysis</li>
+            <li>Watch the console for detailed logging output with exact phrases detected</li>
+        </ol>
+    </div>
+
+    <div class="job-posting">
+        <h2>🚨 Test Job Posting #1 (High Fraud Risk)</h2>
+        <h3>Work From Home - Guaranteed $5000/Week!</h3>
+        <p><strong>Location:</strong> Remote</p>
+        <p><strong>Description:</strong> 
+            Easy money opportunity! No experience required, no interview needed. 
+            Guaranteed income of $5000 per week working from home. 
+            Simple copy paste work that anyone can do. 
+            Contact us via WhatsApp for instant hiring.
+            Registration fee of $99 required to get started.
+        </p>
+        <p><strong>Requirements:</strong> None! Anyone can apply!</p>
+        <button class="test-button" onclick="testFraudDetection(1)">🔍 Test Fraud Detection</button>
+    </div>
+
+    <div class="job-posting">
+        <h2>✅ Test Job Posting #2 (Legitimate)</h2>
+        <h3>Software Developer - Full Stack</h3>
+        <p><strong>Location:</strong> San Francisco, CA</p>
+        <p><strong>Description:</strong> 
+            We are seeking a qualified software developer with experience in full-stack development.
+            Our company was founded in 2010 and has office locations in multiple cities.
+            Benefits include health insurance, 401k matching, and vacation days.
+            Degree required in Computer Science or related field.
+        </p>
+        <p><strong>Requirements:</strong> 
+            - Bachelor's degree in Computer Science
+            - 3+ years of experience required
+            - Skills required: JavaScript, Python, React
+            - Certifications preferred
+        </p>
+        <button class="test-button" onclick="testFraudDetection(2)">🔍 Test Fraud Detection</button>
+    </div>
+
+    <div class="job-posting">
+        <h2>⚠️ Test Job Posting #3 (Mixed Signals)</h2>
+        <h3>Data Entry Specialist - Urgent Hiring</h3>
+        <p><strong>Location:</strong> Work from home</p>
+        <p><strong>Description:</strong> 
+            Immediate start available for data entry work from home.
+            Flexible hours and easy work. Limited time opportunity.
+            Experience required in data processing and attention to detail.
+            Benefits include health insurance and professional development.
+        </p>
+        <p><strong>Requirements:</strong> 
+            - Previous data entry experience
+            - Reliable internet connection
+            - Attention to detail
+        </p>
+        <button class="test-button" onclick="testFraudDetection(3)">🔍 Test Fraud Detection</button>
+    </div>
+
+    <script>
+        // Test job posting texts
+        const jobTexts = {
+            1: `Work From Home - Guaranteed $5000/Week! Easy money opportunity! No experience required, no interview needed. Guaranteed income of $5000 per week working from home. Simple copy paste work that anyone can do. Contact us via WhatsApp for instant hiring. Registration fee of $99 required to get started.`,
+            
+            2: `Software Developer - Full Stack. We are seeking a qualified software developer with experience in full-stack development. Our company was founded in 2010 and has office locations in multiple cities. Benefits include health insurance, 401k matching, and vacation days. Degree required in Computer Science or related field. Requirements include Bachelor's degree in Computer Science, 3+ years of experience required, Skills required: JavaScript, Python, React, Certifications preferred.`,
+            
+            3: `Data Entry Specialist - Urgent Hiring. Immediate start available for data entry work from home. Flexible hours and easy work. Limited time opportunity. Experience required in data processing and attention to detail. Benefits include health insurance and professional development. Requirements: Previous data entry experience, Reliable internet connection, Attention to detail.`
+        };
+
+        async function testFraudDetection(jobId) {
+            console.log(`\n🧪 ===== TESTING JOB POSTING #${jobId} =====`);
+            console.log(`📝 Job Text: "${jobTexts[jobId]}"`);
+            
+            try {
+                // Send message to background script for analysis
+                const response = await chrome.runtime.sendMessage({
+                    action: 'analyzeJobPosting',
+                    jobText: jobTexts[jobId],
+                    pageUrl: window.location.href,
+                    jobId: `test-job-${jobId}`
+                });
+                
+                console.log(`✅ Analysis completed for Job #${jobId}:`, response);
+                
+                // Display result on page
+                alert(`Job #${jobId} Analysis Result:\n\nFraud Risk: ${response.isFraud ? 'HIGH' : 'LOW'}\nConfidence: ${(response.confidence * 100).toFixed(1)}%\n\nCheck console for detailed logging!`);
+                
+            } catch (error) {
+                console.error(`❌ Error testing Job #${jobId}:`, error);
+                alert(`Error testing Job #${jobId}: ${error.message}\n\nMake sure the FraudBuster extension is loaded!`);
+            }
+        }
+
+        // Auto-detect extension presence
+        window.addEventListener('load', () => {
+            if (typeof chrome !== 'undefined' && chrome.runtime) {
+                console.log('✅ Chrome extension API detected');
+                console.log('🔍 FraudBuster Enhanced Logging Test Page loaded');
+                console.log('📋 Ready to test fraud detection with detailed logging');
+            } else {
+                console.warn('⚠️ Chrome extension API not available - make sure you\'re running this in Chrome with the extension loaded');
+            }
+        });
+    </script>
+</body>
+</html>
