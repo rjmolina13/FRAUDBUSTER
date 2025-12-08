@@ -136,3 +136,11 @@ key.pem
 *.tar.gz
 *.rar
 *.7z
+public/
+dists/
+*.map
+users.json
+!dev/lib/**
+!dists/lib/**
+firestore.rules
+legitimate_jobs.txt
