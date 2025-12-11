@@ -1,0 +1,554 @@
+<!--
+  FraudBuster Popup HTML
+  Structure:
+  - Fullscreen loading overlay with step progress
+  - Main container with header, controls, results and community section
+  - SVG icons are inline for crisp rendering
+  Notes:
+  - UI state is driven by popup.js
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FraudBuster</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <!-- Loading Screen Overlay -->
+  <div id="loadingScreen" class="loading-screen">
+    <div class="loading-content">
+      <div class="loading-logo">
+        <svg class="shield-icon loading-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+        </svg>
+        <h2>FraudBuster</h2>
+      </div>
+      
+      <div class="loading-spinner">
+        <svg class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10" stroke-dasharray="31.416" stroke-dashoffset="31.416"></circle>
+        </svg>
+      </div>
+      
+      <div class="loading-status">
+        <div class="loading-icon">
+          <!-- Dynamic icon will be inserted here -->
+        </div>
+        <div class="loading-text" id="loadingText">Initializing extension...</div>
+      </div>
+      
+      <div class="loading-progress">
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <div class="progress-steps">
+          <div class="step" id="step1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </div>
+          <div class="step" id="step2">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7,10 12,15 17,10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </div>
+          <div class="step" id="step3">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="m22 21-3-3m0 0a2 2 0 0 0 0-4 2 2 0 0 0 0 4z"></path>
+            </svg>
+          </div>
+          <div class="step" id="step4">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 12l2 2 4-4"></path>
+              <path d="M21 12c.552 0 1-.448 1-1V8a2 2 0 0 0-2-2h-5L9.414 0H4a2 2 0 0 0-2 2v5c0 .552.448 1 1 1h3v4c0 .552.448 1 1 1h4v4c0 .552.448 1 1 1h4c.552 0 1-.448 1-1v-4z"></path>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <svg class="shield-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+        </svg>
+        <h1>FraudBuster</h1>
+      </div>
+      <div class="toggle-container">
+        <label class="toggle-switch">
+          <input type="checkbox" id="extensionToggle">
+          <span class="slider"></span>
+        </label>
+        <span class="toggle-label">Active</span>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Scan Section -->
+      <section class="scan-section">
+        <button id="scanButton" class="scan-button" disabled>
+          <svg class="scan-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <path d="m21 21-4.35-4.35"></path>
+          </svg>
+          <span class="scan-text">Scan Page</span>
+        </button>
+        <p class="scan-description">Analyze this page for fraudulent job postings</p>
+      </section>
+
+      <!-- Domain Status Dialog -->
+      <div id="domainStatusDialog" class="domain-dialog-overlay" style="display: none;">
+        <div class="domain-dialog">
+          <div class="domain-dialog-header">
+            <svg class="warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+            <h3>Domain Status Alert</h3>
+          </div>
+          <div class="domain-dialog-content">
+            <p class="domain-status-message" id="domainStatusMessage">
+              This domain is known to be fraudulent based on community reports.
+            </p>
+            <div class="domain-info-box">
+              <div class="domain-name" id="dialogDomainName">example.com</div>
+              <div class="domain-reports" id="dialogDomainReports">Reported by 15 users</div>
+            </div>
+            <p class="domain-question">
+              Would you like to proceed with detailed NLP analysis anyway?
+            </p>
+          </div>
+          <div class="domain-dialog-actions">
+            <button id="skipNlpButton" class="skip-button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 6L6 18"></path>
+                <path d="M6 6l12 12"></path>
+              </svg>
+              Skip Analysis
+            </button>
+            <button id="proceedNlpButton" class="proceed-button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+              </svg>
+              Analyze Anyway
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fraud Detection Section -->
+      <section class="fraud-detection-section" id="fraudDetectorSection">
+        <h3>Job Fraud Detection</h3>
+        <div class="fraud-detector-status">
+          <span class="status-label">Detector Status:</span>
+          <span class="status-value" id="fraudDetectorStatus">Checking...</span>
+        </div>
+        <div class="job-postings-info">
+          <span class="job-count-label">Job Postings Found:</span>
+          <span class="job-count" id="jobCount">0</span>
+        </div>
+        <div class="fraud-detection-buttons">
+          <button id="analyzeJobsButton" class="analyze-button" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 12l2 2 4-4"></path>
+              <path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9c2.12 0 4.07.74 5.61 1.98"></path>
+            </svg>
+            Analyze Jobs
+          </button>
+          <button id="refreshJobsButton" class="refresh-button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path>
+            </svg>
+            Refresh
+          </button>
+        </div>
+        <div class="job-analysis-results" id="jobAnalysisResults"></div>
+      </section>
+
+      <!-- Results Section -->
+      <section class="results-section" id="resultsSection" style="display: none;">
+        <div class="risk-indicator">
+          <div class="risk-circle" id="riskCircle">
+            <span class="risk-percentage" id="riskPercentage">0%</span>
+          </div>
+          <div class="risk-details">
+            <h3 class="risk-title" id="riskTitle">Analyzing...</h3>
+            <p class="risk-description" id="riskDescription">Please wait while we scan the page</p>
+          </div>
+        </div>
+        
+        <div class="analysis-details" id="analysisDetails">
+          <div class="detail-item">
+            <span class="detail-label">ML Confidence:</span>
+            <span class="detail-value" id="mlConfidence">--</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Community Reports:</span>
+            <span class="detail-value" id="communityReports">--</span>
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Domain Status:</span>
+            <span class="detail-value" id="domainStatus">--</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Comprehensive Analysis Results Section -->
+      <section class="comprehensive-analysis-section" id="comprehensiveAnalysisSection" style="display: none;">
+        <h3>Fraud Analysis Results</h3>
+        <div class="analysis-result-card" id="analysisResultCard">
+          <div class="analysis-header">
+            <div class="detection-method" id="detectionMethod">Analyzing...</div>
+            <div class="fraud-status" id="fraudStatus">Unknown</div>
+          </div>
+          <div class="analysis-details" id="comprehensiveAnalysisDetails">
+            <div class="detail-row">
+              <span class="detail-label">Risk Level:</span>
+              <span class="detail-value" id="riskLevelValue">--</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Confidence:</span>
+              <span class="detail-value" id="confidenceValue">--</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Domain:</span>
+              <span class="detail-value" id="domainValue">--</span>
+            </div>
+          </div>
+          <div class="analysis-reasons" id="analysisReasons" style="display: none;">
+            <h4>Detection Reasons:</h4>
+            <ul id="reasonsList"></ul>
+          </div>
+        </div>
+        
+        <!-- Manual Review Section -->
+        <div class="manual-review-section" id="manualReviewSection" style="display: none;">
+          <div class="manual-review-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="help-icon">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+            <h4>Manual Review Needed</h4>
+          </div>
+          <p class="manual-review-description">
+            Our automated systems couldn't determine if this page is fraudulent. 
+            Please help us improve by providing your assessment.
+          </p>
+          <div class="manual-review-buttons">
+            <button id="reportFraudButton" class="manual-button fraud-button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+              </svg>
+              Report as Fraud
+            </button>
+            <button id="markLegitimateButton" class="manual-button legitimate-button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 12l2 2 4-4"></path>
+                <path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9c2.12 0 4.07.74 5.61 1.98"></path>
+              </svg>
+              Mark as Legitimate
+            </button>
+          </div>
+        </div>
+        
+        <!-- Domain Reporting Section -->
+        <div class="domain-reporting-section" id="domainReportingSection" style="display: none;">
+          <h4>Report New Fraudulent Domain</h4>
+          <p class="domain-reporting-description">
+            Help protect others by reporting this domain as fraudulent.
+          </p>
+          <div class="domain-info">
+            <span class="domain-label">Domain:</span>
+            <span class="domain-name" id="reportDomainName">--</span>
+          </div>
+          <div class="reporting-form">
+            <label for="fraudReason">Reason for reporting:</label>
+            <select id="fraudReason" class="fraud-reason-select">
+              <option value="fake_jobs">Fake job postings</option>
+              <option value="phishing">Phishing attempt</option>
+              <option value="scam">Financial scam</option>
+              <option value="identity_theft">Identity theft</option>
+              <option value="other">Other suspicious activity</option>
+            </select>
+            <button id="submitDomainReportButton" class="submit-report-button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 19l7-7 3 3-7 7-3-3z"></path>
+                <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path>
+                <path d="M2 2l7.586 7.586"></path>
+                <circle cx="11" cy="11" r="2"></circle>
+              </svg>
+              Submit Report
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Page Classification Section -->
+      <section class="page-classification-section" id="pageClassificationSection" style="display: none;">
+        <h3>Page Classification</h3>
+        <div class="classification-card">
+          <div class="classification-header">
+            <div class="classification-icon" id="classificationIcon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14,2 14,8 20,8"></polyline>
+              </svg>
+            </div>
+            <div class="classification-info">
+              <div class="classification-type" id="classificationType">Analyzing...</div>
+              <div class="classification-confidence" id="classificationConfidence">--</div>
+            </div>
+          </div>
+          <div class="classification-details" id="classificationDetails">
+            <div class="detail-row">
+              <span class="detail-label">Content Density:</span>
+              <span class="detail-value" id="contentDensityValue">--</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Job Indicators:</span>
+              <span class="detail-value" id="jobIndicatorsValue">--</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Navigation Score:</span>
+              <span class="detail-value" id="navigationScoreValue">--</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Confidence Adjustment:</span>
+              <span class="detail-value" id="confidenceAdjustmentValue">--</span>
+            </div>
+          </div>
+          <div class="classification-feedback" id="classificationFeedback">
+            <p class="feedback-question">Is this page classification correct?</p>
+            <div class="classification-feedback-buttons">
+              <button id="classificationCorrect" class="feedback-button correct">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M9 12l2 2 4-4"></path>
+                  <path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9c2.12 0 4.07.74 5.61 1.98"></path>
+                </svg>
+                Correct
+              </button>
+              <button id="classificationIncorrect" class="feedback-button incorrect">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 6L6 18"></path>
+                  <path d="M6 6l12 12"></path>
+                </svg>
+                Incorrect
+              </button>
+            </div>
+            <div id="classificationFeedbackDetails" class="feedback-details" style="display: none;">
+              <label for="correctClassification">What should this page be classified as?</label>
+              <select id="correctClassification" class="classification-select">
+                <option value="landing_page">Landing Page</option>
+                <option value="job_posting">Job Posting Page</option>
+              </select>
+              <textarea id="classificationComment" placeholder="Optional: Tell us more about why this classification was incorrect..."></textarea>
+              <button id="submitClassificationFeedback" class="action-button submit-feedback">
+                Submit Classification Feedback
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Learning System Status Section -->
+      <section class="learning-status-section" id="learningStatusSection" style="display: none;">
+        <h3>AI Learning System</h3>
+        <div class="learning-status-card">
+          <div class="learning-status-header">
+            <div class="learning-icon" id="learningIcon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+              </svg>
+            </div>
+            <div class="learning-status-info">
+              <div class="learning-status-title">Dynamic Learning Engine</div>
+              <div class="learning-status-value" id="learningStatusValue">Active</div>
+            </div>
+          </div>
+          <div class="learning-metrics" id="learningMetrics">
+            <div class="metric-row">
+              <span class="metric-label">Patterns Learned:</span>
+              <span class="metric-value" id="patternsLearnedValue">--</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-label">Accuracy Improvement:</span>
+              <span class="metric-value" id="accuracyImprovementValue">--</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-label">False Positives Reduced:</span>
+              <span class="metric-value" id="falsePositivesReducedValue">--</span>
+            </div>
+            <div class="metric-row">
+              <span class="metric-label">Last Model Update:</span>
+              <span class="metric-value" id="lastModelUpdateValue">--</span>
+            </div>
+          </div>
+          <div class="learning-actions">
+            <button id="refreshLearningData" class="action-button refresh-learning">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path>
+              </svg>
+              Refresh Learning Data
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- User Feedback Section -->
+      <section class="user-feedback-section" id="userFeedbackSection" style="display: none;">
+        <h3>Rate Detection Accuracy</h3>
+        <div class="feedback-content">
+          <p class="feedback-question">How accurate was this fraud detection?</p>
+          <div class="feedback-buttons">
+            <button id="feedbackCorrect" class="feedback-button correct">
+              <span class="feedback-icon">👍</span>
+              Correct
+            </button>
+            <button id="feedbackIncorrect" class="feedback-button incorrect">
+              <span class="feedback-icon">👎</span>
+              Incorrect
+            </button>
+            <button id="feedbackUnsure" class="feedback-button unsure">
+              <span class="feedback-icon">🤔</span>
+              Unsure
+            </button>
+          </div>
+          <div id="feedbackDetails" class="feedback-details" style="display: none;">
+            <textarea id="feedbackComment" placeholder="Optional: Tell us more about why this detection was incorrect..."></textarea>
+            <button id="submitFeedback" class="action-button submit-feedback">
+              Submit Feedback
+            </button>
+          </div>
+          <div id="feedbackSuccess" class="feedback-success" style="display: none;">
+            <span class="success-icon">✅</span>
+            Thank you for your feedback!
+          </div>
+        </div>
+      </section>
+
+      <!-- Community Section -->
+      <section class="community-section">
+        <h3>Community Actions</h3>
+        <div class="community-buttons">
+          <button id="reportButton" class="community-button report">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 3l18 18M22 12c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2s10 4.477 10 10z"></path>
+              <path d="M12 8v4M12 16h.01"></path>
+            </svg>
+            Report URL
+          </button>
+          <div class="vote-buttons">
+            <button id="upvoteButton" class="community-button vote-button upvote">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path>
+              </svg>
+              <span class="vote-text">Upvote</span>
+            </button>
+            <button id="downvoteButton" class="community-button vote-button downvote">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"></path>
+              </svg>
+              <span class="vote-text">Downvote</span>
+            </button>
+          </div>
+        </div>
+        <div class="community-stats" id="communityStats">
+          <span class="stat-item">Reports: <span id="totalReports">0</span></span>
+          <span class="stat-item">Your Contributions: <span id="userContributions">0</span></span>
+        </div>
+      </section>
+
+      <!-- Settings Section -->
+      <section class="settings-section">
+        <details class="settings-details">
+          <summary>Settings</summary>
+          <div class="settings-content">
+            <!-- System Status -->
+            <div class="status-info">
+              <h4>System Status</h4>
+              <div class="status-item">
+                <span class="status-label">Last Data Fetch:</span>
+                <span class="status-value" id="lastDataFetch">--</span>
+              </div>
+              <div class="status-item">
+                <span class="status-label">NLP Rules:</span>
+                <span class="status-value" id="nlpRulesCount">--</span>
+              </div>
+              <div class="status-item">
+                <span class="status-label">URL Database:</span>
+                <span class="status-value" id="urlListingCount">--</span>
+              </div>
+            </div>
+            
+            <!-- Settings Controls -->
+            <div class="setting-item">
+              <label for="autoScan">Auto-scan pages</label>
+              <input type="checkbox" id="autoScan">
+            </div>
+            <div class="setting-item">
+              <label for="sensitivity">Sensitivity Level</label>
+              <input type="range" id="sensitivity" min="1" max="10" value="5">
+              <span class="sensitivity-value" id="sensitivityValue">5</span>
+            </div>
+            <div class="setting-item">
+              <label for="darkMode">Dark Mode</label>
+              <select id="darkMode">
+                <option value="auto">Auto</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </div>
+          </div>
+        </details>
+      </section>
+      <div class="popup-footer-text">
+        (c) <span id="copyrightYear"></span> Ronanj Molina (@rjmolina13) and Tyron Sicio
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <p class="version">v1.0.0</p>
+      <div class="status-indicator" id="statusIndicator">
+        <span class="status-dot"></span>
+        <span class="status-text">Ready</span>
+      </div>
+      <div class="status-progress"></div>
+    </footer>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+    <div class="loading-spinner"></div>
+    <p class="loading-text">Analyzing page...</p>
+  </div>
+
+  <script src="popup.js"></script>
+  <div id="adminPanel" class="admin-panel" style="display:none;">
+    <div class="admin-container">
+      <h3>Admin Tools</h3>
+      <p id="adminStatus">Ready</p>
+      <button id="exportDatasetButton">Export Full Scan Dataset</button>
+    </div>
+  </div>
+</body>
+</html>

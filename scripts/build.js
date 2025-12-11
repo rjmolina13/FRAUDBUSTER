@@ -1,131 +1,125 @@
-const fs = require('fs');
+const esbuild = require('esbuild');
+const fs = require('fs-extra');
+const { glob } = require('glob');
+const { minify } = require('html-minifier-terser');
 const path = require('path');
+const readline = require('readline');
 
-function ensureDir(p) {
-  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
-}
+const SRC_DIR = path.join(process.cwd(), 'dev');
+const OUT_DIR = path.join(process.cwd(), 'dists');
 
-function readFileSafe(p) {
-  try { return fs.readFileSync(p, 'utf8'); } catch (_) { return ''; }
-}
-
-function writeFileSafe(p, data) {
-  ensureDir(path.dirname(p));
-  fs.writeFileSync(p, data);
-}
-
-function stripHtmlComments(s) {
-  return s.replace(/<!--([\s\S]*?)-->/g, '');
-}
-
-function stripBlockComments(s) {
-  return s.replace(/\/\*[\s\S]*?\*\//g, '');
-}
-
-function stripCommentsJs(input) {
-  let out = '';
-  let i = 0;
-  const len = input.length;
-  let inSingle = false, inDouble = false, inTemplate = false;
-  let inLine = false, inBlock = false;
-  while (i < len) {
-    const ch = input[i];
-    const next = i + 1 < len ? input[i + 1] : '';
-    if (inLine) {
-      if (ch === '\n' || ch === '\r') {
-        inLine = false;
-        out += ch;
-      }
-      i++;
-      continue;
-    }
-    if (inBlock) {
-      if (ch === '*' && next === '/') {
-        inBlock = false;
-        i += 2;
+async function build() {
+  await fs.emptyDir(OUT_DIR);
+  const assets = ['manifest.json', 'icon16.png', 'icon48.png', 'icon128.png', 'lib'];
+  for (const a of assets) {
+    const sp = path.join(SRC_DIR, a);
+    if (await fs.pathExists(sp)) {
+      const dp = path.join(OUT_DIR, a);
+      if (a === 'manifest.json') {
+        try {
+          const txt = await fs.readFile(sp, 'utf8');
+          let json = JSON.parse(txt);
+          const isInteractive = process.stdin.isTTY && process.stdout.isTTY;
+          const forceVersion = process.env.BUILD_VERSION;
+          const skipPrompt = process.env.BUILD_NONINTERACTIVE === '1';
+          if (forceVersion && /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(forceVersion)) {
+            json.version = forceVersion;
+            await fs.outputFile(sp, JSON.stringify(json, null, 2));
+            console.log('Using version from BUILD_VERSION', forceVersion);
+          } else if (!skipPrompt && isInteractive) {
+            const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+            const ask = q => new Promise(res => rl.question(q, ans => res(ans)));
+            try {
+              const ans = (await ask(`Current version is ${json.version || 'unknown'}. Change version? (y/N): `)).trim().toLowerCase();
+              if (ans === 'y' || ans === 'yes') {
+                const newVer = (await ask('Enter new version: ')).trim();
+                if (newVer && /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(newVer)) {
+                  json.version = newVer;
+                  await fs.outputFile(sp, JSON.stringify(json, null, 2));
+                  console.log('Updated dev manifest version to', newVer);
+                } else {
+                  console.log('Invalid version, keeping', json.version || 'unknown');
+                }
+              }
+            } finally {
+              rl.close();
+            }
+          }
+          const baseName = typeof json.name === 'string' ? json.name.replace(/\s*\(dev\)\s*$/i, '') : 'FraudBuster';
+          json.name = baseName || 'FraudBuster';
+          await fs.outputFile(dp, JSON.stringify(json, null, 2));
+        } catch (_) {
+          await fs.copy(sp, dp);
+        }
       } else {
-        i++;
+        await fs.copy(sp, dp);
       }
-      continue;
     }
-    if (inSingle) {
-      out += ch;
-      if (ch === '\\') {
-        if (i + 1 < len) { out += input[i + 1]; i += 2; continue; }
-      } else if (ch === '\'') {
-        inSingle = false;
-      }
-      i++;
-      continue;
-    }
-    if (inDouble) {
-      out += ch;
-      if (ch === '\\') {
-        if (i + 1 < len) { out += input[i + 1]; i += 2; continue; }
-      } else if (ch === '"') {
-        inDouble = false;
-      }
-      i++;
-      continue;
-    }
-    if (inTemplate) {
-      out += ch;
-      if (ch === '`') {
-        inTemplate = false;
-      } else if (ch === '\\') {
-        if (i + 1 < len) { out += input[i + 1]; i += 2; continue; }
-      }
-      i++;
-      continue;
-    }
-    // Not in string/comment
-    if (ch === '\'') { inSingle = true; out += ch; i++; continue; }
-    if (ch === '"') { inDouble = true; out += ch; i++; continue; }
-    if (ch === '`') { inTemplate = true; out += ch; i++; continue; }
-    if (ch === '/' && next === '/') { inLine = true; i += 2; continue; }
-    if (ch === '/' && next === '*') { inBlock = true; i += 2; continue; }
-    out += ch;
-    i++;
   }
-  return out;
+  const jsFilesAll = await glob(path.join(SRC_DIR, '*.js'));
+  const jsFiles = jsFilesAll.filter(f => path.basename(f) !== 'background.js');
+  if (jsFiles.length) {
+    await esbuild.build({
+      entryPoints: jsFiles,
+      outdir: OUT_DIR,
+      minify: true,
+      bundle: false,
+      target: ['chrome100'],
+      allowOverwrite: true
+    });
+  }
+  const bgSrc = path.join(SRC_DIR, 'background.js');
+  if (await fs.pathExists(bgSrc)) {
+    await esbuild.build({
+      entryPoints: [bgSrc],
+      outfile: path.join(OUT_DIR, 'background.js'),
+      bundle: false,
+      minify: false,
+      minifyWhitespace: true,
+      minifySyntax: true,
+      minifyIdentifiers: false,
+      legalComments: 'none',
+      allowOverwrite: true
+    });
+  }
+  const popupSrc = path.join(SRC_DIR, 'popup.js');
+  if (await fs.pathExists(popupSrc)) {
+    const src = await fs.readFile(popupSrc, 'utf8');
+    const stripped = src
+      .replace(/async\s+function\s+fbLoadingStart\s*\([\s\S]*?\}\s*/g, '')
+      .replace(/function\s+fbLoadingResume\s*\([\s\S]*?\}\s*/g, '')
+      .replace(/function\s+fbLoadingSet\s*\([\s\S]*?\}\s*/g, '')
+      .replace(/window\.fbLoadingStart\s*=\s*fbLoadingStart\s*;\s*/g, '')
+      .replace(/window\.fbLoadingResume\s*=\s*fbLoadingResume\s*;\s*/g, '')
+      .replace(/window\.fbLoadingSet\s*=\s*fbLoadingSet\s*;\s*/g, '');
+    const result = await esbuild.transform(stripped, { minify: true, target: 'chrome100' });
+    await fs.outputFile(path.join(OUT_DIR, 'popup.js'), result.code);
+  }
+  const cssFiles = await glob(path.join(SRC_DIR, '*.css'));
+  if (cssFiles.length) {
+    await esbuild.build({
+      entryPoints: cssFiles,
+      outdir: OUT_DIR,
+      minify: true,
+      bundle: false,
+      allowOverwrite: true
+    });
+  }
+  const htmlFiles = await glob(path.join(SRC_DIR, '*.html'));
+  for (const file of htmlFiles) {
+    const html = await fs.readFile(file, 'utf8');
+    const minifiedHtml = await minify(html, {
+      collapseWhitespace: true,
+      removeComments: true,
+      minifyCSS: true,
+      minifyJS: true
+    });
+    await fs.outputFile(path.join(OUT_DIR, path.basename(file)), minifiedHtml);
+  }
+  console.log('Dists built to', OUT_DIR);
 }
 
-function processContent(content, ext) {
-  if (ext === '.html') return stripHtmlComments(content);
-  if (ext === '.css') return stripBlockComments(content);
-  if (ext === '.js') return stripCommentsJs(stripBlockComments(content));
-  if (ext === '.json') return content;
-  return content;
-}
-
-function copyDirStripComments(srcDir, outDir) {
-  ensureDir(outDir);
-  const entries = fs.readdirSync(srcDir, { withFileTypes: true });
-  entries.forEach(e => {
-    const srcPath = path.join(srcDir, e.name);
-    const outPath = path.join(outDir, e.name);
-    if (e.isDirectory()) {
-      copyDirStripComments(srcPath, outPath);
-    } else {
-      const ext = path.extname(e.name).toLowerCase();
-      const content = readFileSafe(srcPath);
-      if (content !== '') {
-        const processed = processContent(content, ext);
-        writeFileSafe(outPath, processed);
-      } else {
-        fs.copyFileSync(srcPath, outPath);
-      }
-    }
-  });
-}
-
-function main() {
-  const root = process.cwd();
-  const src = path.join(root, 'dev');
-  const out = path.join(root, 'dists');
-  ensureDir(out);
-  copyDirStripComments(src, out);
-  console.log('Dists built to', out);
-}
-
-main();
+build().catch(err => {
+  console.error('Build failed', err);
+  process.exit(1);
+});

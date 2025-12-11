@@ -1,0 +1,114 @@
+{
+  "suspicious_phrases": [
+    {
+      "category": "Vague Job Descriptions",
+      "phrases": [
+        "No experience necessary",
+        "Entry-level",
+        "All training provided",
+        "Flexible hours",
+        "Work from home",
+        "Be your own boss",
+        "Unusually high salary for the role",
+        "Vague job duties and responsibilities",
+        "Generic job titles",
+        "No specific qualifications required",
+        "Telecommuting",
+        "Remote work",
+        "Independent contractor",
+        "Consultant",
+        "Home-based"
+      ]
+    },
+    {
+      "category": "Urgency and Pressure",
+      "phrases": [
+        "Act immediately",
+        "Limited time offer",
+        "Positions are filling fast",
+        "Urgent hiring",
+        "Start immediately",
+        "On-the-spot job offer",
+        "Hiring immediately",
+        "Apply now",
+        "Don't miss this opportunity",
+        "Today only"
+      ]
+    },
+    {
+      "category": "Unprofessional Communication",
+      "phrases": [
+        "Spelling and grammar mistakes",
+        "Generic greetings (e.g., 'Dear Applicant')",
+        "Use of informal language or emojis",
+        "Communication through personal email addresses (e.g., Gmail, Yahoo)",
+        "Poorly formatted emails or job descriptions",
+        "Excessive use of capital letters and exclamation points",
+        " unprofessional email address",
+        "no contact name"
+      ]
+    },
+    {
+      "category": "Suspicious Requests",
+      "phrases": [
+        "Upfront payment for training or equipment",
+        "Request for personal or financial information (bank account, social security number, etc.)",
+        "Request to communicate off-platform (e.g., Telegram, WhatsApp)",
+        "Mailing a cashier's check and requesting you to wire back fees",
+        "Asking you to purchase products or services",
+        "Request for a fee to apply for the job",
+        "Request to cash a check and send money to a third party",
+        "Request for credit card information",
+        "Request to open a new bank account",
+        "Investment required",
+        "Processing fee"
+      ]
+    },
+    {
+      "category": "Unrealistic Promises",
+      "phrases": [
+        "Guaranteed income",
+        "Unlimited earning potential",
+        "Get rich quick",
+        "Financial freedom",
+        "Six-figure income from home",
+        "Earn thousands a week",
+        "Become a millionaire",
+        "No selling"
+      ]
+    },
+    {
+      "category": "Identity Theft and Phishing",
+      "phrases": [
+        "Request for a copy of your driver's license or passport",
+        "Request for your mother's maiden name or other personal identifiers",
+        "Links to suspicious websites that ask for login credentials",
+        "Phishing emails",
+        "Identity theft",
+        "Request for your date of birth"
+      ]
+    },
+    {
+      "category": "Fake Company Red Flags",
+      "phrases": [
+        "No physical address or contact information",
+        "Website with limited information or stock photos",
+        "No online presence or reviews",
+        "Company name is very similar to a well-known company",
+        "Unverifiable company registration",
+        "Post office box as an address",
+        "No company website"
+      ]
+    },
+    {
+      "category": "Interview and Hiring Process",
+      "phrases": [
+        "No interview",
+        "Text-based interview",
+        "Interview through an instant messaging app",
+        "Immediate job offer without an interview",
+        "Unprofessional interview questions"
+      ]
+    }
+  ]
+}

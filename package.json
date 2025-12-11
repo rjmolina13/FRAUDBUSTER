@@ -7,6 +7,13 @@
     "build:dists": "node scripts/build.js",
     "pack:crx": "node scripts/pack-crx.js",
     "verify:dists": "node scripts/verify.js",
-    "release": "npm run build:dists && npm run pack:crx"
+    "update": "npm run build:dists && npm run verify:dists && npm run pack:crx",
+    "release": "BUILD_NONINTERACTIVE=1 npm run build:dists && npm run verify:dists && npm run pack:crx"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.1",
+    "fs-extra": "^11.3.2",
+    "glob": "^10.5.0",
+    "html-minifier-terser": "^7.2.0"
   }
 }

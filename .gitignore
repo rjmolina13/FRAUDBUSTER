@@ -142,5 +142,6 @@ dists/
 users.json
 !dev/lib/**
 !dists/lib/**
-firestore.rules
+firestore.*
+firebase.*
 legitimate_jobs.txt

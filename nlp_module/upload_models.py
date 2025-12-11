@@ -1,155 +1,471 @@
 #!/usr/bin/env python3
 """
-Upload NLP Model Files to Firebase Storage
+Unified Firestore upload entrypoint for FRAUDBUSTER NLP model artifacts.
 
-This script uploads the trained NLP model files (nlp_model.pkl and vectorizer.pkl)
-to Firebase Storage for use by the Chrome extension.
+Supports uploading legitimate, enhanced, or both sets of artifacts with
+validation, confirmation prompts, and robust error handling.
+
+Usage examples:
+- Upload legitimate: `python3 nlp_module/upload_models.py --model_type legitimate`
+- Upload enhanced:   `python3 nlp_module/upload_models.py --model_type enhanced`
+- Upload both:       `python3 nlp_module/upload_models.py --model_type both`
 """
 
+import argparse
+import json
+import logging
 import os
 import sys
-from pathlib import Path
+from datetime import datetime
+from typing import Optional, Dict
 
-try:
-    import firebase_admin
-    from firebase_admin import credentials, storage
-except ImportError:
-    print("Error: firebase-admin package not found.")
-    print("Please install it with: pip install firebase-admin")
-    sys.exit(1)
 
-# Firebase configuration
-SERVICE_ACCOUNT_PATH = '/Users/rjmolina13/Documents/Code_Stuff/FRAUDBUSTER-dev/fraudbuster-c59d3-firebase-adminsdk-fbsvc-626440b38d.json'
-STORAGE_BUCKET = 'fraudbuster-c59d3.appspot.com'
+def configure_logging(verbose: bool = True) -> None:
+    level = logging.INFO if verbose else logging.WARNING
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%H:%M:%S",
+    )
 
-# Model files to upload
-MODEL_FILES = {
-    'nlp_model.pkl': 'models/nlp_model.pkl',
-    'vectorizer.pkl': 'models/vectorizer.pkl'
-}
 
-def check_service_account_file():
-    """Check if the service account file exists."""
-    if not os.path.exists(SERVICE_ACCOUNT_PATH):
-        print(f"Error: Service account file not found at {SERVICE_ACCOUNT_PATH}")
-        print("Please ensure the Firebase Admin SDK service account key file is in the correct location.")
-        return False
-    return True
+DEFAULT_CREDENTIALS = (
+    "/Users/rjmolina13/Documents/Code_Stuff/FRAUDBUSTER-dev/"
+    "fraudbuster-c59d3-firebase-adminsdk-fbsvc-626440b38d.json"
+)
 
-def initialize_firebase():
-    """Initialize Firebase Admin SDK."""
+FRAUD_DATA_COLLECTION = "fraud_data"
+
+
+def initialize_firestore(credentials_path: str):
     try:
-        # Check if Firebase is already initialized
-        firebase_admin.get_app()
-        print("Firebase already initialized.")
-    except ValueError:
-        # Initialize Firebase
-        cred = credentials.Certificate(SERVICE_ACCOUNT_PATH)
-        firebase_admin.initialize_app(cred, {
-            'storageBucket': STORAGE_BUCKET
-        })
-        print("Firebase initialized successfully.")
-
-def check_and_create_bucket():
-    """Check if the storage bucket exists and create it if it doesn't."""
-    try:
-        bucket = storage.bucket()
-        # Try to get bucket metadata to check if it exists
-        bucket.reload()
-        print(f"Storage bucket '{STORAGE_BUCKET}' exists and is accessible.")
-        return True
+        if not os.path.exists(credentials_path):
+            raise FileNotFoundError(f"Service account file not found: {credentials_path}")
+        import firebase_admin
+        from firebase_admin import credentials, firestore
+        if not firebase_admin._apps:
+            cred = credentials.Certificate(credentials_path)
+            firebase_admin.initialize_app(cred)
+        db = firestore.client()
+        logging.info("Firebase initialized")
+        return db
     except Exception as e:
-        error_msg = str(e).lower()
-        if "does not exist" in error_msg or "not found" in error_msg:
-            print(f"Storage bucket '{STORAGE_BUCKET}' does not exist.")
-            print("\n=== Firebase Storage Setup Required ===")
-            print("Please enable Firebase Storage for your project:")
-            print("1. Go to https://console.firebase.google.com/")
-            print(f"2. Select your project: fraudbuster-c59d3")
-            print("3. Click on 'Storage' in the left sidebar")
-            print("4. Click 'Get started' to enable Firebase Storage")
-            print("5. Choose your storage location and security rules")
-            print("6. Once enabled, run this script again")
-            print("\nNote: The default bucket name should be: fraudbuster-c59d3.appspot.com")
-            return False
+        logging.error("Error initializing Firebase: %s", e)
+        raise
+
+
+def read_json_file(file_path: str) -> Optional[Dict]:
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logging.error("Error reading JSON file %s: %s", file_path, e)
+        return None
+
+
+def validate_artifacts(base_dir: str, prefix: str) -> Dict[str, str]:
+    files = {
+        "nlp_model": os.path.join(base_dir, f"{prefix}_nlp_model.json"),
+        "vectorizer": os.path.join(base_dir, f"{prefix}_vectorizer.json"),
+        "metadata": os.path.join(base_dir, f"{prefix}_model_metadata.json"),
+    }
+    missing = [k for k, p in files.items() if not os.path.exists(p)]
+    if missing:
+        raise FileNotFoundError(f"Missing artifact files: {', '.join(missing)} in {base_dir}")
+    return files
+
+
+def confirm_overwrite(db, collection: str, force_yes: bool) -> None:
+    from google.cloud.exceptions import NotFound
+    docs = ["metadata", "vectorizer", "model_base", "feature_log_prob", "feature_count"]
+    try:
+        exists_any = False
+        for doc in docs:
+            snapshot = db.collection(collection).document(doc).get()
+            if snapshot.exists:
+                exists_any = True
+                break
+        if exists_any and not force_yes:
+            resp = input(
+                f"Documents already exist in '{collection}'. Overwrite? [y/N]: "
+            ).strip().lower()
+            if resp not in ("y", "yes"):
+                raise RuntimeError("Upload cancelled by user")
+    except NotFound:
+        # If collection doesn't exist yet, proceed
+        return
+    except Exception as e:
+        if not force_yes:
+            raise
+
+
+def upload_artifacts(db, collection: str, files: Dict[str, str]) -> None:
+    model_data = read_json_file(files["nlp_model"])
+    vectorizer_data = read_json_file(files["vectorizer"])
+    metadata = read_json_file(files["metadata"]) or {}
+    if model_data is None or vectorizer_data is None:
+        raise RuntimeError("Failed to read model/vectorizer JSON data")
+
+    model_size = os.path.getsize(files["nlp_model"]) if os.path.exists(files["nlp_model"]) else 0
+    vectorizer_size = os.path.getsize(files["vectorizer"]) if os.path.exists(files["vectorizer"]) else 0
+    metadata_size = os.path.getsize(files["metadata"]) if os.path.exists(files["metadata"]) else 0
+
+    metadata_doc = {
+        "metadata": metadata,
+        "format": "json",
+        "version": metadata.get("version", "1.0"),
+        "upload_timestamp": datetime.now().isoformat(),
+        "file_sizes": {
+            "model": model_size,
+            "vectorizer": vectorizer_size,
+            "metadata": metadata_size,
+            "total": model_size + vectorizer_size + metadata_size,
+        },
+    }
+    db.collection(collection).document("metadata").set(metadata_doc)
+
+    vectorizer_doc = {
+        "vectorizer_data": vectorizer_data,
+        "type": "vectorizer",
+        "upload_timestamp": datetime.now().isoformat(),
+    }
+    db.collection(collection).document("vectorizer").set(vectorizer_doc)
+
+    # Split large arrays to separate docs to keep base doc light
+    feature_log_prob = model_data.pop("feature_log_prob", [])
+    feature_count = model_data.pop("feature_count", [])
+
+    model_doc = {
+        "model_data": model_data,
+        "type": "model_base",
+        "upload_timestamp": datetime.now().isoformat(),
+    }
+    db.collection(collection).document("model_base").set(model_doc)
+    db.collection(collection).document("feature_log_prob").set(
+        {
+            "feature_log_prob_json": json.dumps(feature_log_prob),
+            "type": "feature_log_prob",
+            "upload_timestamp": datetime.now().isoformat(),
+        }
+    )
+    db.collection(collection).document("feature_count").set(
+        {
+            "feature_count_json": json.dumps(feature_count),
+            "type": "feature_count",
+            "upload_timestamp": datetime.now().isoformat(),
+        }
+    )
+    logging.info("Uploaded artifacts to collection '%s'", collection)
+
+
+def parse_args(argv=None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Upload FRAUDBUSTER NLP models to Firestore",
+    )
+    parser.add_argument(
+        "--model_type",
+        choices=["legitimate", "enhanced", "both"],
+        default="both",
+        help="Which model artifacts to upload",
+    )
+    parser.add_argument(
+        "--firestore_path",
+        type=str,
+        default=None,
+        help="Firestore collection path. Defaults to type-specific collection.",
+    )
+    parser.add_argument(
+        "--credentials",
+        type=str,
+        default=DEFAULT_CREDENTIALS,
+        help="Path to Firebase service account JSON",
+    )
+    parser.add_argument(
+        "--model_path",
+        type=str,
+        default=None,
+        help="Directory containing model JSON files. Defaults to nlp_module root.",
+    )
+    parser.add_argument("--yes", action="store_true", help="Skip confirmation prompts")
+    parser.add_argument("--quiet", action="store_true", help="Reduce logging verbosity")
+    parser.add_argument(
+        "--fraud_urls_path",
+        type=str,
+        default=None,
+        help="Path to text file containing fraud URLs, one per line",
+    )
+    return parser.parse_args(argv)
+
+
+def resolve_defaults(args: argparse.Namespace) -> argparse.Namespace:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    nlp_dir = os.path.dirname(script_dir)
+    if not args.model_path:
+        args.model_path = script_dir
+    if not args.firestore_path:
+        if args.model_type == "legitimate":
+            args.firestore_path = "nlp_legit_models"
+        elif args.model_type == "enhanced":
+            args.firestore_path = "nlp_models"
         else:
-            print(f"Error accessing storage bucket: {str(e)}")
-            return False
+            # both: not used directly; we will use per-type defaults
+            args.firestore_path = None
+    return args
 
-def upload_file(local_path, remote_path):
-    """Upload a file to Firebase Storage."""
+
+def read_fraud_urls(file_path: str) -> Optional[list]:
     try:
-        bucket = storage.bucket()
-        blob = bucket.blob(remote_path)
-        
-        print(f"Uploading {local_path} to {remote_path}...")
-        blob.upload_from_filename(local_path)
-        
-        # Make the file publicly readable (optional)
-        blob.make_public()
-        
-        print(f"✓ Successfully uploaded {local_path}")
-        print(f"  Public URL: {blob.public_url}")
-        return True
-        
+        if not os.path.exists(file_path):
+            logging.warning("Fraud URLs file not found: %s", file_path)
+            return None
+        with open(file_path, "r", encoding="utf-8") as f:
+            urls = [line.strip() for line in f if line.strip()]
+        logging.info("Loaded %d URLs from %s", len(urls), file_path)
+        return urls
     except Exception as e:
-        print(f"✗ Error uploading {local_path}: {str(e)}")
+        logging.error("Error reading fraud URLs file %s: %s", file_path, e)
+        return None
+
+
+def fetch_existing_fraud_urls(db) -> set:
+    logging.info("Fetching existing fraud URLs from Firestore")
+    existing_urls = set()
+    try:
+        doc = db.collection(FRAUD_DATA_COLLECTION).document("fraud_urls").get()
+        if doc.exists:
+            data = doc.to_dict()
+            if isinstance(data.get("urls"), list):
+                existing_urls.update(data["urls"])
+                logging.info("Found %d URLs in %s/fraud_urls", len(data["urls"]), FRAUD_DATA_COLLECTION)
+        for snap in db.collection("fraud_urls").stream():
+            d = snap.to_dict()
+            url = d.get("url")
+            if url:
+                existing_urls.add(url)
+        logging.info("Total existing unique URLs: %d", len(existing_urls))
+    except Exception as e:
+        logging.warning("Could not fetch existing URLs: %s", e)
+    return existing_urls
+
+
+def upload_fraud_urls_to_firestore(db, new_urls: list) -> bool:
+    logging.info("Merging and uploading fraud URLs to Firestore")
+    try:
+        existing_urls = fetch_existing_fraud_urls(db)
+        new_set = set(new_urls)
+        truly_new = new_set - existing_urls
+        merged = existing_urls.union(new_set)
+        logging.info(
+            "Merge stats: preserved=%d new_in_file=%d added=%d duplicates_skipped=%d total=%d",
+            len(existing_urls), len(new_set), len(truly_new), len(new_set & existing_urls), len(merged)
+        )
+        fraud_data = {
+            "urls": sorted(list(merged)),
+            "metadata": {
+                "upload_timestamp": datetime.now().isoformat(),
+                "url_count": len(merged),
+                "existing_urls_preserved": len(existing_urls),
+                "new_urls_added": len(truly_new),
+                "duplicate_urls_skipped": len(new_set & existing_urls),
+                "version": "2.0",
+                "description": "Known fraudulent job posting domains (merged with user reports)",
+                "sources": ["fraud-urls.txt", "user_reports", "fraud_urls_collection"],
+            },
+        }
+        db.collection(FRAUD_DATA_COLLECTION).document("fraud_urls").set(fraud_data)
+        logging.info("Uploaded merged fraud URLs to %s/fraud_urls", FRAUD_DATA_COLLECTION)
+        return True
+    except Exception as e:
+        logging.error("Error uploading fraud URLs: %s", e)
         return False
 
-def main():
-    """Main function to upload model files."""
-    print("=== NLP Model Upload to Firebase Storage ===")
-    
-    # Check if service account file exists
-    if not check_service_account_file():
-        return False
-    
-    # Initialize Firebase
-    try:
-        initialize_firebase()
-    except Exception as e:
-        print(f"Error initializing Firebase: {str(e)}")
-        return False
-    
-    # Check if storage bucket exists
-    if not check_and_create_bucket():
-        return False
-    
-    # Check if model files exist
-    current_dir = Path(__file__).parent
-    missing_files = []
-    
-    for local_file in MODEL_FILES.keys():
-        file_path = current_dir / local_file
-        if not file_path.exists():
-            missing_files.append(local_file)
-    
-    if missing_files:
-        print(f"Error: Missing model files: {', '.join(missing_files)}")
-        print("Please run train_model.py first to generate the model files.")
-        return False
-    
-    # Upload files
-    success_count = 0
-    total_files = len(MODEL_FILES)
-    
-    for local_file, remote_path in MODEL_FILES.items():
-        file_path = current_dir / local_file
-        if upload_file(str(file_path), remote_path):
-            success_count += 1
-    
-    # Summary
-    print(f"\n=== Upload Summary ===")
-    print(f"Successfully uploaded: {success_count}/{total_files} files")
-    
-    if success_count == total_files:
-        print("✓ All model files uploaded successfully!")
-        print("\nYour Chrome extension can now fetch these models from Firebase Storage.")
-        return True
+
+def main(argv=None) -> None:
+    if argv is None and len(sys.argv) == 1:
+        print("=" * 80)
+        print("FRAUDBUSTER Model Uploader")
+        print("=" * 80)
+        print("Running defaults: --model_type=both --yes")
+        print("Common arguments: --model_type legitimate|enhanced|both | --firestore_path PATH | --credentials JSON | --model_path DIR | --yes | --quiet")
+        print("Examples:")
+        print("  python3 nlp_module/upload_models.py --model_type legitimate --yes")
+        print("  python3 nlp_module/upload_models.py --model_type enhanced --credentials /path/creds.json")
+        print("  python3 nlp_module/upload_models.py --model_type both --model_path /path/to/artifacts --yes")
+        print("Use --help for full usage details.\n")
+        args = parse_args(["--model_type", "both", "--yes"])  # ensure full non-interactive default
     else:
-        print("✗ Some files failed to upload. Please check the errors above.")
-        return False
+        args = parse_args(argv)
+    configure_logging(verbose=not args.quiet)
+    args = resolve_defaults(args)
+    logging.info(
+        "Starting upload model_type=%s firestore_path=%s model_path=%s",
+        args.model_type,
+        args.firestore_path,
+        args.model_path,
+    )
+    db = initialize_firestore(args.credentials)
+    module_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.dirname(module_dir)
+    if args.model_type == "legitimate":
+        try:
+            files = validate_artifacts(args.model_path, "legit")
+        except FileNotFoundError as e:
+            logging.warning(str(e))
+            if args.yes:
+                logging.info("Artifacts missing. Auto-training legitimate model.")
+                try:
+                    import subprocess
+                    import sys as _sys
+                    subprocess.check_call([_sys.executable, os.path.join(module_dir, "train_models.py"), "--model_type", "legitimate"], cwd=module_dir)
+                except Exception as te:
+                    logging.error("Auto-training failed: %s", te)
+                    raise RuntimeError("Upload aborted: training failed or data missing")
+            else:
+                resp = input("Artifacts missing for legitimate model. Run training now? [y/N]: ").strip().lower()
+                if resp in ("y", "yes"):
+                    try:
+                        import subprocess
+                        import sys as _sys
+                        subprocess.check_call([_sys.executable, os.path.join(module_dir, "train_models.py"), "--model_type", "legitimate"], cwd=module_dir)
+                    except Exception as te:
+                        logging.error("Training failed: %s", te)
+                        raise RuntimeError("Upload aborted: training failed or data missing")
+                else:
+                    raise RuntimeError("Upload aborted: missing artifacts")
+            files = validate_artifacts(args.model_path, "legit")
+        collection = args.firestore_path or "nlp_legit_models"
+        confirm_overwrite(db, collection, force_yes=args.yes)
+        upload_artifacts(db, collection, files)
+    elif args.model_type == "enhanced":
+        try:
+            files = validate_artifacts(args.model_path, "enhanced")
+        except FileNotFoundError as e:
+            logging.warning(str(e))
+            if args.yes:
+                logging.info("Artifacts missing. Auto-training enhanced model.")
+                try:
+                    import subprocess
+                    import sys as _sys
+                    subprocess.check_call([_sys.executable, os.path.join(module_dir, "train_models.py"), "--model_type", "enhanced"], cwd=module_dir)
+                except Exception as te:
+                    logging.error("Auto-training failed: %s", te)
+                    raise RuntimeError("Upload aborted: training failed or data missing")
+            else:
+                resp = input("Artifacts missing for enhanced model. Run training now? [y/N]: ").strip().lower()
+                if resp in ("y", "yes"):
+                    try:
+                        import subprocess
+                        import sys as _sys
+                        subprocess.check_call([_sys.executable, os.path.join(module_dir, "train_models.py"), "--model_type", "enhanced"], cwd=module_dir)
+                    except Exception as te:
+                        logging.error("Training failed: %s", te)
+                        raise RuntimeError("Upload aborted: training failed or data missing")
+                else:
+                    raise RuntimeError("Upload aborted: missing artifacts")
+            files = validate_artifacts(args.model_path, "enhanced")
+        collection = args.firestore_path or "nlp_models"
+        confirm_overwrite(db, collection, force_yes=args.yes)
+        upload_artifacts(db, collection, files)
+    else:
+        # both
+        files_legit = None
+        try:
+            files_legit = validate_artifacts(args.model_path, "legit")
+        except FileNotFoundError as e:
+            logging.warning(str(e))
+            if args.yes:
+                logging.info("Artifacts missing. Auto-training legitimate model.")
+                try:
+                    import subprocess
+                    import sys as _sys
+                    subprocess.check_call([_sys.executable, os.path.join(module_dir, "train_models.py"), "--model_type", "legitimate"], cwd=module_dir)
+                except Exception as te:
+                    logging.error("Auto-training failed: %s", te)
+                    if args.model_type != "both":
+                        raise RuntimeError("Upload aborted: training failed or data missing")
+                    else:
+                        logging.info("Skipping legitimate due to training failure")
+            else:
+                resp = input("Artifacts missing for legitimate model. Run training now? [y/N]: ").strip().lower()
+                if resp in ("y", "yes"):
+                    try:
+                        import subprocess
+                        import sys as _sys
+                        subprocess.check_call([_sys.executable, os.path.join(module_dir, "train_models.py"), "--model_type", "legitimate"], cwd=module_dir)
+                    except Exception as te:
+                        logging.error("Training failed: %s", te)
+                        if args.model_type != "both":
+                            raise RuntimeError("Upload aborted: training failed or data missing")
+                        else:
+                            logging.info("Skipping legitimate due to training failure")
+                else:
+                    if args.model_type != "both":
+                        raise RuntimeError("Upload aborted: missing artifacts")
+                    else:
+                        logging.info("Skipping legitimate due to missing artifacts")
+            try:
+                files_legit = validate_artifacts(args.model_path, "legit")
+            except FileNotFoundError:
+                files_legit = None
+        files_enh = None
+        try:
+            files_enh = validate_artifacts(args.model_path, "enhanced")
+        except FileNotFoundError as e:
+            logging.warning(str(e))
+            if args.yes:
+                logging.info("Artifacts missing. Auto-training enhanced model.")
+                try:
+                    import subprocess
+                    import sys as _sys
+                    subprocess.check_call([_sys.executable, os.path.join(module_dir, "train_models.py"), "--model_type", "enhanced"], cwd=module_dir)
+                except Exception as te:
+                    logging.error("Auto-training failed: %s", te)
+                    if args.model_type != "both":
+                        raise RuntimeError("Upload aborted: training failed or data missing")
+                    else:
+                        logging.info("Skipping enhanced due to training failure")
+            else:
+                resp = input("Artifacts missing for enhanced model. Run training now? [y/N]: ").strip().lower()
+                if resp in ("y", "yes"):
+                    try:
+                        import subprocess
+                        import sys as _sys
+                        subprocess.check_call([_sys.executable, os.path.join(module_dir, "train_models.py"), "--model_type", "enhanced"], cwd=module_dir)
+                    except Exception as te:
+                        logging.error("Training failed: %s", te)
+                        if args.model_type != "both":
+                            raise RuntimeError("Upload aborted: training failed or data missing")
+                        else:
+                            logging.info("Skipping enhanced due to training failure")
+                else:
+                    if args.model_type != "both":
+                        raise RuntimeError("Upload aborted: missing artifacts")
+                    else:
+                        logging.info("Skipping enhanced due to missing artifacts")
+            try:
+                files_enh = validate_artifacts(args.model_path, "enhanced")
+            except FileNotFoundError:
+                files_enh = None
+        confirm_overwrite(db, "nlp_legit_models", force_yes=args.yes)
+        if files_legit:
+            upload_artifacts(db, "nlp_legit_models", files_legit)
+        else:
+            logging.info("Skipping upload for legitimate; no artifacts available")
+        confirm_overwrite(db, "nlp_models", force_yes=args.yes)
+        if files_enh:
+            upload_artifacts(db, "nlp_models", files_enh)
+        else:
+            logging.info("Skipping upload for enhanced; no artifacts available")
+    logging.info("Upload complete")
+
+    default_urls_path = args.fraud_urls_path or os.path.join(repo_root, "datasets", "sites", "fraud-urls.txt")
+    if os.path.exists(default_urls_path):
+        urls = read_fraud_urls(default_urls_path)
+        if urls:
+            upload_fraud_urls_to_firestore(db, urls)
+    else:
+        logging.info("No fraud URLs file found; skipping URL upload")
+
 
 if __name__ == "__main__":
-    success = main()
-    sys.exit(0 if success else 1)
+    main()

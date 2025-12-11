@@ -1,0 +1,114 @@
+:root {
+  --bg: #f6f7fb;
+  --text: #0f172a;
+  --subtext: #334155;
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --primary: #2563eb;
+  --primary-2: #1d4ed8;
+  --green: #16a34a;
+  --red: #dc2626;
+  --page-width: 960px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1220;
+    --text: #e5e7eb;
+    --subtext: #94a3b8;
+    --card: #111827;
+    --border: #1f2937;
+    --primary: #60a5fa;
+    --primary-2: #3b82f6;
+  }
+}
+html, body { height: 100%; }
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 24px;
+  padding: 32px 20px;
+}
+.hero {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  align-items: center;
+  gap: 16px;
+  max-width: var(--page-width);
+  margin: 0 auto;
+}
+.logo { width: 64px; height: 64px; border-radius: 12px; border: 1px solid var(--border); }
+.title { margin: 0; font-size: 1.8rem; }
+.subtitle { margin: 4px 0 0 0; color: var(--subtext); font-size: 1rem; }
+.navigation {
+  width: var(--page-width);
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+.nav-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: #fff;
+  text-decoration: none;
+  background: linear-gradient(90deg, var(--primary), var(--primary-2));
+  font-weight: 600;
+}
+.nav-button:hover { filter: brightness(1.05); }
+.nav-button.disabled { filter: grayscale(0.5); opacity: 0.6; pointer-events: none; }
+.page-info { font-weight: 600; color: var(--subtext); }
+.job-listings {
+  max-width: var(--page-width);
+  margin: 0 auto;
+  display: grid;
+  gap: 12px;
+}
+.job-card {
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 10px;
+  padding: 12px;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.job-card:hover { transform: translateY(-2px); border-color: var(--primary); }
+.job-card.fraud { border-left: 5px solid var(--red); }
+.job-card.legit { border-left: 5px solid var(--green); }
+.job-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.job-title { font-size: 1.25rem; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+.company-name { font-size: 1rem; color: var(--subtext); margin-bottom: 10px; }
+.job-meta { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; color: var(--subtext); }
+.job-description { margin-top: 8px; color: var(--text); }
+.job-requirements h4, .job-benefits h4 { margin: 8px 0; font-size: 1rem; color: var(--text); }
+.job-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.contact-info { background: var(--bg); padding: 10px; border-radius: 8px; }
+.apply-button { background: linear-gradient(90deg, var(--primary), var(--primary-2)); color: #fff; padding: 8px 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }
+.apply-button:hover { filter: brightness(1.05); }
+.status-badge { display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.25rem 0.6rem; border-radius: 12px; font-size: 0.85rem; font-weight: 600; }
+.status-badge.legit {color: #1e8449;}
+.status-badge.fraud {color: #c0392b;}
+.footer { max-width: var(--page-width); margin: 0 auto; display: flex; justify-content: center; border-top: 1px solid var(--border); padding-top: 16px; color: var(--subtext); }
+.footer a { color: var(--subtext); text-decoration: none; }
+.footer a:hover { color: var(--primary); }
+@media (max-width: 768px) {
+  body { padding: 24px 14px; gap: 18px; }
+  .job-footer { flex-direction: column; gap: 10px; align-items: flex-start; }
+}
+/* Backward compatibility for pre-generated pages */
+.container { max-width: var(--page-width); margin: 0 auto; }
+.header { max-width: var(--page-width); margin: 0 auto; padding: 0 0 8px 0; }
+.header h1 { margin: 0; font-size: 1.8rem; color: var(--text); }
+.header p { margin: 4px 0 0 0; color: var(--subtext); }

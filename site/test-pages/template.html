@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FraudBuster Sample Pages - Page {{PAGE_NUMBER}}</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preload" href="../../icon128.svg" as="image">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="FraudBuster sample job pages for testing the extension">
+</head>
+<body>
+  <header class="hero">
+    <img class="logo" src="../../icon128.svg" alt="FraudBuster">
+    <div>
+      <h1 class="title">FraudBuster Sample Job Pages</h1>
+      <p class="subtitle">Browse realistic postings to evaluate detection and UX</p>
+    </div>
+  </header>
+
+  <nav class="navigation">
+    <a href="{{PREV_PAGE}}" class="nav-button {{PREV_DISABLED}}">← Previous</a>
+    <div class="page-info">Page {{PAGE_NUMBER}} of 15</div>
+    <a href="{{NEXT_PAGE}}" class="nav-button {{NEXT_DISABLED}}">Next →</a>
+  </nav>
+
+  <main class="job-listings">
+    {{JOB_LISTINGS}}
+  </main>
+
+  <nav class="navigation">
+    <a href="{{PREV_PAGE}}" class="nav-button {{PREV_DISABLED}}">← Previous</a>
+    <div class="page-info">Page {{PAGE_NUMBER}} of 15</div>
+    <a href="{{NEXT_PAGE}}" class="nav-button {{NEXT_DISABLED}}">Next →</a>
+  </nav>
+
+  <footer class="footer">
+    <p>📚 <a href="https://github.com/rjmolina13/FRAUDBUSTER" target="_blank">View Project on GitHub</a></p>
+  </footer>
+  <script>
+    (function(){
+      var navs=document.querySelectorAll('nav.navigation');
+      var first=navs[0];
+      if(!first) return;
+      var anchors=first.querySelectorAll('a.nav-button');
+      var prev=anchors[0];
+      var next=anchors[1];
+      document.addEventListener('keydown',function(e){
+        if(e.key==='ArrowLeft'){
+          if(prev && !prev.classList.contains('disabled') && prev.getAttribute('href') && prev.getAttribute('href')!=='#'){
+            e.preventDefault();
+            prev.click();
+          }
+        } else if(e.key==='ArrowRight'){
+          if(next && !next.classList.contains('disabled') && next.getAttribute('href') && next.getAttribute('href')!=='#'){
+            e.preventDefault();
+            next.click();
+          }
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
