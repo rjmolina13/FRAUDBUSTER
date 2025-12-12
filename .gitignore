@@ -15,7 +15,6 @@ playwright-report/
 # Development and temporary files
 hello.html
 hello_extensions.png
-firebase-details.txt
 fraud-urls.txt
 legitimate-sites_logs/
 reload-extension-instructions.md
@@ -26,7 +25,6 @@ thesis_docs/
 # Node.js dependencies
 node_modules/
 nlp_module/
-nlp_module/*
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -61,7 +59,6 @@ venv/
 env/
 ENV/
 .venv/
-.env/
 
 # IDE and editor files
 .vscode/
@@ -124,7 +121,6 @@ temp/
 # Chrome extension specific
 *.crx
 *.pem
-key.pem
 
 # Backup files
 *.bak
@@ -146,3 +142,5 @@ firestore.*
 firebase.*
 legitimate_jobs.txt
 *.rules
+.firebaserc
+database.rules.json
