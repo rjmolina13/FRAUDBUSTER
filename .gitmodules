@@ -1,0 +1,6 @@
+[submodule "datasets/csv-repo/Fake-Job-Posting-Prediction"]
+	path = datasets/csv-repo/Fake-Job-Posting-Prediction
+	url = https://github.com/Anshupriya2694/Fake-Job-Posting-Prediction
+[submodule "datasets/csv-repo/Capstone-Project"]
+	path = datasets/csv-repo/Capstone-Project
+	url = https://github.com/sindhubhattarai/Capstone-Project

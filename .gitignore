@@ -145,3 +145,4 @@ users.json
 firestore.*
 firebase.*
 legitimate_jobs.txt
+*.rules
