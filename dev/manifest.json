@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
   "name": "FraudBuster (dev)",
-  "version": "2.8.5",
+  "version": "3.1.0",
   "description": "Detect fraudulent job postings using ML and community intelligence",
   "permissions": [
     "activeTab",
     "storage",
+    "unlimitedStorage",
     "scripting",
     "downloads"
   ],
@@ -20,11 +21,21 @@
   "background": {
     "service_worker": "background.js"
   },
-  "content_scripts": [{
-    "matches": ["http://*/*", "https://*/*", "file://*/*"],
-    "js": ["firebase-config.js", "fraud-detector.js", "content.js"],
-    "run_at": "document_idle"
-  }],
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*",
+        "file://*/*"
+      ],
+      "js": [
+        "firebase-config.js",
+        "fraud-detector.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_title": "FraudBuster - Fraud Detection",

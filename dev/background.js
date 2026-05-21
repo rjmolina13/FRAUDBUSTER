@@ -10,6 +10,13 @@
  * - Designed for Chrome MV3 service worker constraints
  * - Avoids long-running tasks; uses async message handlers
  */
+/*
+ * CHANGELOG
+ * v2.8.6 - chore(docs): thesis Chapter 3 ML workflow and deployment diagram updated
+ * v3.0.1 - style(overlay): improved contrast and added analyzing icon
+ * v3.0.2 - fix(overlay): darkened light-mode analyzing overlay background for readability
+ * v3.1.0 - feat(release): add GitHub zip release automation and browser install documentation
+ */
 // FraudBuster Background Service Worker
 // Load Firebase configuration and fraud detection system
 importScripts('firebase-config.js');
@@ -36,6 +43,12 @@ FIREBASE_SCRIPTS.forEach(script => {
   }
 });
 
+const VOTE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const DOMAIN_PROMOTE_MIN_UPVOTES = 10;
+const DOMAIN_PROMOTE_MIN_RATIO = 0.6;
+const URL_RETAIN_MIN_RATIO = 0.5;
+const DOMAIN_REMOVE_MIN_RATIO = 0.6;
+
 class FraudBusterBackground {
   constructor() {
     this.firebaseManager = null;
@@ -44,6 +57,7 @@ class FraudBusterBackground {
     this.mlModel = null; // Keep for backward compatibility
     this.isInitialized = false;
     this.initializationPromise = null;
+    this.initializationError = null;
     
     // False Positive Reduction System components
     this.pageContextAnalyzer = null;
@@ -84,7 +98,8 @@ class FraudBusterBackground {
         console.log('Using cached session data');
         this.cachedData = sessionData.cachedData;
         this.sessionInitialized = true;
-        this.lastDataFetch = sessionData.lastDataFetch;
+        // Ensure lastDataFetch is populated from cache or set to now if missing
+        this.lastDataFetch = sessionData.lastDataFetch || new Date().toISOString();
         
         // Quick initialization with cached data
         await this.initializeWithCachedData();
@@ -196,6 +211,8 @@ class FraudBusterBackground {
       await this.initializeMLModel();
       
       this.isInitialized = true;
+      // Even in fallback, we consider this a "fetch" attempt (local/fallback data)
+      this.lastDataFetch = new Date().toISOString(); 
       console.log('Fallback initialization completed successfully');
     } catch (error) {
       console.error('Fallback initialization failed:', error);
@@ -221,14 +238,22 @@ class FraudBusterBackground {
   // Session management methods
   async getCachedSessionData() {
     try {
-      const result = await chrome.storage.session.get(['fraudBusterSession']);
-      return result.fraudBusterSession || null;
+      // Check if session storage is available
+      if (chrome.storage && chrome.storage.session) {
+        const result = await chrome.storage.session.get(['fraudBusterSession']);
+        return result.fraudBusterSession || null;
+      } else {
+        console.warn('chrome.storage.session not available');
+        return null;
+      }
     } catch (error) {
-      console.error('Error getting session data in storage method:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      });
+      console.error('Error getting session data in storage method:', error);
+      // Attempt to log detailed error info
+      try {
+        console.error('Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+      } catch (e) {
+        console.error('Could not stringify error:', e);
+      }
       return null;
     }
   }
@@ -243,11 +268,48 @@ class FraudBusterBackground {
         timestamp: new Date().toISOString()
       };
       
-      await chrome.storage.session.set({ fraudBusterSession: sessionData });
+      // Save to BOTH session and local storage to ensure persistence across popup reopens
+      // Session storage is cleared when browser closes, local storage persists
+      const storageOperations = [];
+      
+      if (chrome.storage && chrome.storage.session) {
+        storageOperations.push(chrome.storage.session.set({ fraudBusterSession: sessionData }));
+      }
+      
+      if (chrome.storage && chrome.storage.local) {
+        // We only save the critical metadata to local storage to avoid quota limits
+        // The heavy cachedData is better suited for session storage or IndexedDB
+        const persistentData = {
+            lastDataFetch: this.lastDataFetch,
+            nlpRulesCount: this.getNlpRulesCount(), // Helper to get count safely
+            urlListingCount: this.getUrlListingCount() // Helper to get count safely
+        };
+        storageOperations.push(chrome.storage.local.set({ fraudBusterPersistentStatus: persistentData }));
+      }
+      
+      await Promise.all(storageOperations);
       console.log('Session data saved successfully');
     } catch (error) {
       console.error('Error saving session data:', error);
     }
+  }
+
+  // Helper to safely get NLP rules count
+  getNlpRulesCount() {
+    if (!this.cachedData || !this.cachedData.nlpModel) return 0;
+    if (typeof this.cachedData.nlpModel.rules === 'number') return this.cachedData.nlpModel.rules;
+    if (this.cachedData.nlpModel.rules && Array.isArray(this.cachedData.nlpModel.rules)) return this.cachedData.nlpModel.rules.length;
+    // Fallback to vocabulary size if available
+    if (this.cachedData.nlpModel.vectorizer && this.cachedData.nlpModel.vectorizer.vocabulary) {
+        return Object.keys(this.cachedData.nlpModel.vectorizer.vocabulary).length;
+    }
+    return 0;
+  }
+
+  // Helper to safely get URL listing count
+  getUrlListingCount() {
+      if (!this.cachedData || !this.cachedData.urlList) return 0;
+      return this.cachedData.urlList.length || 0;
   }
 
   generateSessionId() {
@@ -449,12 +511,20 @@ class FraudBusterBackground {
       }
       
       const structuredData = {
+        // Fix: Use vectorizer vocabulary size or feature count for rules count
+        // If 'rules' is expected to be an array elsewhere, we should clarify that.
+        // But getSessionData logic handles number, array or object.
         rules: modelData.metadata?.vocabulary_size || modelData.metadata?.n_features || 0,
         patterns: modelData.metadata?.features || [],
         model: modelData.model,
         vectorizer: modelData.vectorizer,
         metadata: modelData.metadata
       };
+      
+      // Ensure rules is a valid number if metadata is missing
+      if (!structuredData.rules && modelData.vectorizer && modelData.vectorizer.vocabulary) {
+          structuredData.rules = Object.keys(modelData.vectorizer.vocabulary).length;
+      }
       
       console.log('NLP model processed successfully:', {
         rulesCount: structuredData.rules,
@@ -466,6 +536,11 @@ class FraudBusterBackground {
       
       return structuredData;
     } catch (error) {
+      // Propagate network errors to trigger offline mode
+      if (error.message && error.message.includes('No internet connection')) {
+        throw error;
+      }
+
       console.error('Failed to fetch NLP model from Firebase:', {
         error: error.message,
         stack: error.stack,
@@ -537,6 +612,17 @@ class FraudBusterBackground {
       console.error('Failed to initialize fraud detection system:', errorDetails);
       console.error('Raw error object:', error);
       
+      // Check for network error and abort fallback if detected
+      if (error.message && (
+        error.message.includes('No internet connection') || 
+        error.message.includes('no network connection') ||
+        error.message.includes('Network connection failed')
+      )) {
+        console.error('Network error detected. Aborting fallback initialization.');
+        this.initializationError = new Error('No internet connection detected');
+        return;
+      }
+      
       // Try to initialize with fallback patterns
       try {
         if (this.fraudDetector) {
@@ -598,50 +684,17 @@ class FraudBusterBackground {
     // or connect to a cloud ML service
     this.mlModel = {
       predict: async (features) => {
-        // Simple heuristic-based fraud detection for demo
-        let riskScore = 0;
-        
-        // Check for suspicious keywords
-        const suspiciousKeywords = [
-          'urgent', 'limited time', 'act now', 'guaranteed', 'free money',
-          'click here', 'verify account', 'suspended', 'confirm identity',
-          'wire transfer', 'bitcoin', 'cryptocurrency', 'investment opportunity'
-        ];
-        
-        const textContent = features.textContent.toLowerCase();
-        const keywordMatches = suspiciousKeywords.filter(keyword => 
-          textContent.includes(keyword)
-        ).length;
-        
-        riskScore += keywordMatches * 0.15;
-        
-        // Check for suspicious form fields
-        if (features.hasPasswordField && features.hasEmailField) {
-          riskScore += 0.2;
-        }
-        
-        // Check for suspicious URLs
-        if (features.hasExternalLinks) {
-          riskScore += 0.1;
-        }
-        
-        // Check domain age and reputation (simulated)
-        if (features.isDomainNew) {
-          riskScore += 0.3;
-        }
-        
-        // Normalize score to 0-1 range
-        riskScore = Math.min(riskScore, 1);
-        
+        // Fallback removed - strictly rely on fetched models
         return {
-          riskScore,
-          confidence: 0.8 + Math.random() * 0.2, // Simulated confidence
+          riskScore: 0,
+          confidence: 0,
           features: {
-            suspiciousKeywords: keywordMatches,
-            hasLoginForm: features.hasPasswordField && features.hasEmailField,
-            hasExternalLinks: features.hasExternalLinks,
-            domainRisk: features.isDomainNew ? 'high' : 'low'
-          }
+            suspiciousKeywords: 0,
+            hasLoginForm: false,
+            hasExternalLinks: false,
+            domainRisk: 'unknown'
+          },
+          error: 'ML model not loaded'
         };
       }
     };
@@ -664,6 +717,19 @@ class FraudBusterBackground {
   async handleMessage(request, sender, sendResponse) {
     try {
       switch (request.action) {
+        case 'retryInitialization':
+          console.log('Received retry initialization request');
+          this.initializationError = null;
+          try {
+            // Re-run session initialization
+            this.initializationPromise = this.initializeSession();
+            await this.initializationPromise;
+            sendResponse({ success: true });
+          } catch (error) {
+            sendResponse({ success: false, error: error.message });
+          }
+          break;
+
         case 'scanPage':
           // Get tab information from request or sender
           let tabInfo = null;
@@ -871,11 +937,43 @@ class FraudBusterBackground {
             for (const t of tokens) freq[t] = (freq[t] || 0) + 1;
             const top = Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,300);
             dataset.page.topTokens = top.map(([token,count])=>({ token, count }));
-            const json = JSON.stringify(dataset);
-            const b64 = btoa(unescape(encodeURIComponent(json)));
-            const fname = `full_scan_dataset_${Date.now()}.json`;
-            await chrome.downloads.download({ url: `data:application/json;base64,${b64}`, filename: fname, saveAs: false });
-            sendResponse({ success: true });
+            const json = JSON.stringify(dataset, null, 2);
+            
+            // Create a Blob from the JSON data
+            // Blob URLs are more reliable for setting filenames in chrome.downloads than Data URIs
+            const blob = new Blob([json], { type: 'application/json' });
+            
+            // Generate filename with ExtensionName_Version_DateString_ContentDescription
+            const manifest = chrome.runtime.getManifest();
+            const extName = manifest.name.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-_]/g, '');
+            const version = `v${manifest.version}`;
+            const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+            const contentDesc = 'FullScanDataset';
+            const fname = `${extName}_${version}_${date}_${contentDesc}.json`;
+            
+            // Convert Blob to Data Reader to get a base64 string that works reliably 
+            // OR use createObjectURL if supported. In MV3 SW, createObjectURL works.
+            // Let's try base64 data URI again but with specific options, 
+            // AS Blob URL sometimes has issues in SW regarding lifetime.
+            // ACTUALLY, checking documentation: Data URIs *should* work with filename if saveAs is false
+            // IF the permissions are correct. But user says it didn't work before (defaulted to download.json).
+            // Let's try the Reader approach to construct a cleaner data URL, 
+            // OR stick to Blob URL which is the standard fix for this.
+            
+            // Attempt 2: Use Blob -> Reader -> Data URL (cleaner) + conflictAction
+            const reader = new FileReader();
+            reader.onload = async function() {
+              const dataUrl = reader.result;
+              await chrome.downloads.download({ 
+                url: dataUrl, 
+                filename: fname, 
+                saveAs: false, // User requested NO dialog
+                conflictAction: 'uniquify'
+              });
+              sendResponse({ success: true });
+            };
+            reader.readAsDataURL(blob);
+            return true; // Keep message channel open for async reader
           } catch (error) {
             console.error('Admin export failed:', error);
             sendResponse({ success: false, error: error.message });
@@ -1036,6 +1134,20 @@ class FraudBusterBackground {
 
   async getFraudDetectorStatus() {
     try {
+      // Check for initialization error (e.g. network error)
+      if (this.initializationError && this.initializationError.message.includes('No internet connection detected')) {
+        return {
+          success: false,
+          error: 'No internet connection detected',
+          status: {
+            status: 'error',
+            message: 'No internet connection detected',
+            canAnalyze: false,
+            errorType: 'NETWORK_ERROR'
+          }
+        };
+      }
+
       if (!this.fraudDetector) {
         return {
           success: true,
@@ -1825,8 +1937,10 @@ class FraudBusterBackground {
       let isBlacklisted = false;
       
       documents.forEach((doc) => {
-        reports += doc.reports || 0;
-        totalReports += doc.totalVotes || 0;
+        const dv = typeof doc.downvotes === 'number' ? doc.downvotes : (doc.reports || 0);
+        const tv = typeof doc.totalVotes === 'number' ? doc.totalVotes : ((doc.upvotes || 0) + dv);
+        reports += dv;
+        totalReports += tv;
         if (doc.isBlacklisted) {
           isBlacklisted = true;
         }
@@ -1840,6 +1954,86 @@ class FraudBusterBackground {
     } catch (error) {
       console.error('Error getting community data:', error);
       return { reports: 0, totalReports: 0, isBlacklisted: false };
+    }
+  }
+  
+  async evaluateUrlDomainPromotionAndRetention(url, domain) {
+    try {
+      const windowStart = Date.now() - VOTE_WINDOW_MS;
+      const domainDocs = await this.firebaseManager.getDocuments('url_reports', { field: 'domain', operator: '==', value: domain });
+      let domainUp = 0;
+      let domainDown = 0;
+      domainDocs.forEach(d => {
+        const ts = new Date(d.lastVoteAt || d.lastReportedAt || d.timestamp || Date.now()).getTime();
+        if (ts >= windowStart) {
+          const up = typeof d.upvotes === 'number' ? d.upvotes : 0;
+          const down = typeof d.downvotes === 'number' ? d.downvotes : (d.reports || 0);
+          domainUp += up;
+          domainDown += down;
+        }
+      });
+      const domainTotal = domainUp + domainDown;
+      if (domainTotal > 0) {
+        const upRatio = domainUp / domainTotal;
+        if (domainUp >= DOMAIN_PROMOTE_MIN_UPVOTES && upRatio >= DOMAIN_PROMOTE_MIN_RATIO) {
+          try {
+            await this.firebaseManager.updateDocument('fraud_data', 'fraud_urls', {
+              urls: firebase.firestore.FieldValue.arrayUnion(domain),
+              metadata: {
+                upload_timestamp: new Date().toISOString(),
+                url_count: firebase.firestore.FieldValue.increment(1),
+                source: 'votes_promotion'
+              }
+            });
+          } catch (e) {
+            try {
+              await this.firebaseManager.db.collection('fraud_data').doc('fraud_urls').set({
+                urls: [domain],
+                metadata: { upload_timestamp: new Date().toISOString(), url_count: 1, source: 'votes_promotion' }
+              }, { merge: true });
+            } catch (_) {}
+          }
+          if (Array.isArray(this.cachedData.urlList)) {
+            if (!this.cachedData.urlList.includes(domain)) {
+              this.cachedData.urlList.push(domain);
+            }
+          } else {
+            this.cachedData.urlList = [domain];
+          }
+        } else {
+          const downRatio = domainDown / domainTotal;
+          if (downRatio >= DOMAIN_REMOVE_MIN_RATIO) {
+            try {
+              await this.firebaseManager.updateDocument('fraud_data', 'fraud_urls', {
+                urls: firebase.firestore.FieldValue.arrayRemove(domain),
+                metadata: { upload_timestamp: new Date().toISOString(), source: 'votes_demote' }
+              });
+            } catch (_) {}
+            if (Array.isArray(this.cachedData.urlList)) {
+              this.cachedData.urlList = this.cachedData.urlList.filter(d => d !== domain);
+            }
+          }
+        }
+      }
+      const urlHash = this.firebaseManager.hashURL(url);
+      const urlDocs = await this.firebaseManager.getDocuments('url_reports', { field: 'urlHash', operator: '==', value: urlHash });
+      if (urlDocs.length > 0) {
+        const d = urlDocs[0];
+        const up = typeof d.upvotes === 'number' ? d.upvotes : 0;
+        const down = typeof d.downvotes === 'number' ? d.downvotes : (d.reports || 0);
+        const total = typeof d.totalVotes === 'number' ? d.totalVotes : (up + down);
+        const ts = new Date(d.lastVoteAt || d.timestamp || Date.now()).getTime();
+        if (total > 0 && ts >= windowStart) {
+          const upRatio = up / total;
+          if (upRatio < URL_RETAIN_MIN_RATIO && down > up) {
+            try {
+              await this.firebaseManager.db.collection('url_reports').doc(d.id).delete();
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Promotion/retention evaluation error:', error);
     }
   }
 
@@ -1948,6 +2142,7 @@ class FraudBusterBackground {
   async voteURL(url, voteType) {
     try {
       const urlHash = this.firebaseManager.hashURL(url);
+      const domain = new URL(url).hostname;
       
       // Get the user's anonymous ID
       const result = await chrome.storage.sync.get(['anonymousUserId']);
@@ -1984,14 +2179,17 @@ class FraudBusterBackground {
             
             // Adjust report counts based on vote change
             if (voteStatus.voteType === 'downvote' && voteType === 'upvote') {
-              // Changed from downvote to upvote - decrease reports
-              await this.firebaseManager.incrementField('url_reports', doc.id, 'reports', -1);
+              await this.firebaseManager.incrementField('url_reports', doc.id, 'downvotes', -1);
+              await this.firebaseManager.incrementField('url_reports', doc.id, 'upvotes', 1);
+              await this.firebaseManager.updateDocument('url_reports', doc.id, { lastVoteAt: new Date().toISOString(), domain });
             } else if (voteStatus.voteType === 'upvote' && voteType === 'downvote') {
-              // Changed from upvote to downvote - increase reports
-              await this.firebaseManager.incrementField('url_reports', doc.id, 'reports', 1);
+              await this.firebaseManager.incrementField('url_reports', doc.id, 'upvotes', -1);
+              await this.firebaseManager.incrementField('url_reports', doc.id, 'downvotes', 1);
+              await this.firebaseManager.updateDocument('url_reports', doc.id, { lastVoteAt: new Date().toISOString(), domain });
             }
           }
           
+          await this.evaluateUrlDomainPromotionAndRetention(url, domain);
           return { success: true, message: `Vote changed to ${voteType} successfully!` };
         }
       }
@@ -2013,21 +2211,31 @@ class FraudBusterBackground {
       
       if (existingReports.length === 0) {
         // Create new report entry
+        const upvotesInit = voteType === 'upvote' ? 1 : 0;
+        const downvotesInit = voteType === 'downvote' ? 1 : 0;
         await this.firebaseManager.addDocument('url_reports', {
           urlHash,
-          reports: voteType === 'downvote' ? 1 : 0,
+          fullUrl: url,
+          domain,
+          upvotes: upvotesInit,
+          downvotes: downvotesInit,
           totalVotes: 1,
-          isBlacklisted: false
+          isBlacklisted: false,
+          lastVoteAt: new Date().toISOString()
         });
       } else {
         // Update existing entry
         const doc = existingReports[0];
         await this.firebaseManager.incrementField('url_reports', doc.id, 'totalVotes', 1);
-        
-        if (voteType === 'downvote') {
-          await this.firebaseManager.incrementField('url_reports', doc.id, 'reports', 1);
+        if (voteType === 'upvote') {
+          await this.firebaseManager.incrementField('url_reports', doc.id, 'upvotes', 1);
+        } else {
+          await this.firebaseManager.incrementField('url_reports', doc.id, 'downvotes', 1);
         }
+        await this.firebaseManager.updateDocument('url_reports', doc.id, { lastVoteAt: new Date().toISOString(), domain, fullUrl: url });
       }
+      
+      await this.evaluateUrlDomainPromotionAndRetention(url, domain);
       
       return { success: true, message: 'Vote recorded successfully!' };
     } catch (error) {
@@ -2326,6 +2534,23 @@ class FraudBusterBackground {
       // Check domain status if domain is provided
       const domainStatus = currentDomain ? this.checkDomainStatus(currentDomain) : 'Unknown';
       
+      // Attempt to load persistent status if cached data is missing
+      let persistentStatus = {};
+      if (nlpRulesCount === 0 && urlListingCount === 0) {
+        try {
+            const stored = await chrome.storage.local.get(['fraudBusterPersistentStatus']);
+            if (stored.fraudBusterPersistentStatus) {
+                persistentStatus = stored.fraudBusterPersistentStatus;
+                // Use persistent values if current runtime values are zero/null
+                if (nlpRulesCount === 0) nlpRulesCount = persistentStatus.nlpRulesCount || 0;
+                if (urlListingCount === 0) urlListingCount = persistentStatus.urlListingCount || 0;
+                if (!this.lastDataFetch) this.lastDataFetch = persistentStatus.lastDataFetch;
+            }
+        } catch (e) {
+            console.warn('Failed to load persistent status', e);
+        }
+      }
+
       return {
         success: true,
         data: {
@@ -2685,7 +2910,7 @@ FraudBusterBackground.prototype.storeAnalysisResult = async function(url, analys
       this.analysisCache.clear();
       entries.slice(0, 10).forEach(([key, value]) => { this.analysisCache.set(key, value); });
     }
-    await this.firebaseManager.addDocument('analysis_results', {
+    await this.firebaseManager.addDocument('analytics_analyses', {
       urlHash: this.firebaseManager.hashURL(url),
       method: analysis.method,
       isFraud: analysis.isFraud,
@@ -2778,53 +3003,20 @@ FraudBusterBackground.prototype.analyzePageForFraud = async function(tabId, url,
 
 FraudBusterBackground.prototype.analyzeContentWithNLP = async function(content, url) {
   try {
-    if (!navigator.onLine) {
-      throw new Error('No network connection available for NLP analysis');
+    if (!this.fraudDetector) {
+      this.fraudDetector = new FraudDetector(this.modelManager);
     }
-    const modelDataTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Model data fetch timeout')), 30000));
-    const [modelData, legitModelData] = await Promise.race([
-      Promise.all([
-        this.modelManager.fetchModelData(),
-        this.modelManager.fetchLegitimateModelData()
-      ]),
-      modelDataTimeout
-    ]);
-    if (!modelData.model || !modelData.vectorizer) {
-      throw new Error('Model or vectorizer data not available');
-    }
-    if (modelData.metadata?.isExpired) {
-      console.warn('Using expired model data due to network issues');
-    }
-    const analysisTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('NLP analysis timeout')), 25000));
-    const response = await Promise.race([
-      fetch('http://localhost:8080/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, url, model_data: modelData.model, vectorizer_data: modelData.vectorizer, legit_model_data: legitModelData?.model || null, legit_vectorizer_data: legitModelData?.vectorizer || null })
-      }),
-      analysisTimeout
-    ]);
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error');
-      throw new Error(`NLP service error: ${response.status} - ${errorText}`);
-    }
-    const result = await response.json();
-    let legitimacyConfidence = 0;
-    let legitimacyScore = 0;
-    if (typeof result.is_legitimate === 'boolean' && typeof result.legitimate_confidence === 'number') {
-      legitimacyConfidence = result.legitimate_confidence;
-    } else {
-      const rb = await this.fraudDetector.performRuleBasedAnalysis(content);
-      legitimacyScore = rb.legitimateScore;
-      legitimacyConfidence = Math.min(1, legitimacyScore / 1.0);
-    }
-    const fusedIsFraud = result.is_fraudulent && legitimacyConfidence < 0.4;
-    const fusedConfidence = fusedIsFraud ? result.confidence * (1 - legitimacyConfidence * 0.5) : Math.max(result.confidence * (1 - legitimacyConfidence), legitimacyConfidence);
-    return { isFraudulent: fusedIsFraud, confidence: fusedConfidence, method: 'nlp_analysis', features: result.features, modelAccuracy: modelData.metadata?.accuracy, legitimateConfidence: legitimacyConfidence, analyzedAt: new Date().toISOString(), networkStatus: 'online', modelExpired: modelData.metadata?.isExpired || false };
+    const modelData = await this.modelManager.fetchModelData().catch(() => ({ model: null, vectorizer: null, metadata: {} }));
+    const comprehensive = await this.fraudDetector.performComprehensiveAnalysis(content, url);
+    const rb = this.fraudDetector.performRuleBasedAnalysis(content);
+    const legitimacyConfidence = Math.min(1, (rb.legitimateScore || 0));
+    const fusedIsFraud = comprehensive.isFraud && legitimacyConfidence < 0.4;
+    const fusedConfidence = fusedIsFraud ? comprehensive.confidence * (1 - legitimacyConfidence * 0.5) : Math.max(comprehensive.confidence * (1 - legitimacyConfidence), legitimacyConfidence);
+    return { isFraudulent: fusedIsFraud, confidence: fusedConfidence, method: 'nlp_analysis', features: comprehensive.featureMatches || [], modelAccuracy: modelData.metadata?.accuracy, legitimateConfidence: legitimacyConfidence, analyzedAt: new Date().toISOString(), networkStatus: navigator.onLine ? 'online' : 'offline', modelExpired: modelData.metadata?.isExpired || false };
   } catch (error) {
     let errorType = 'unknown_error';
     let fallbackAction = 'manual_review_required';
-    if (error.message.includes('network') || error.message.includes('fetch')) {
+    if (error.message.includes('network')) {
       errorType = 'network_error';
       fallbackAction = 'offline_mode';
     } else if (error.message.includes('timeout')) {
@@ -2833,9 +3025,6 @@ FraudBusterBackground.prototype.analyzeContentWithNLP = async function(content, 
     } else if (error.message.includes('Model') || error.message.includes('vectorizer')) {
       errorType = 'model_unavailable';
       fallbackAction = 'domain_check_only';
-    } else if (error.message.includes('NLP service')) {
-      errorType = 'service_error';
-      fallbackAction = 'manual_review_required';
     }
     return { isFraudulent: false, confidence: 0, method: 'nlp_analysis_failed', error: error.message, errorType, fallbackAction, analyzedAt: new Date().toISOString(), networkStatus: navigator.onLine ? 'online' : 'offline' };
   }

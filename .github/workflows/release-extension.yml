@@ -1,0 +1,90 @@
+name: Build And Release Extension
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version in SemVer format (X.Y.Z or vX.Y.Z)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Resolve release version
+        shell: bash
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            RAW_VERSION="${{ github.event.inputs.version }}"
+          else
+            RAW_VERSION="${GITHUB_REF_NAME}"
+          fi
+
+          VERSION="${RAW_VERSION#v}"
+          TAG="v${VERSION}"
+
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version must match X.Y.Z or vX.Y.Z"
+            exit 1
+          fi
+
+          echo "VERSION=${VERSION}" >> "${GITHUB_ENV}"
+          echo "TAG=${TAG}" >> "${GITHUB_ENV}"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build release bundle
+        run: BUILD_NONINTERACTIVE=1 BUILD_VERSION="${VERSION}" npm run release
+
+      - name: Check zip artifact
+        shell: bash
+        run: |
+          ZIP_PATH="public/FRAUDBUSTER_v${VERSION}.zip"
+          if [ ! -f "${ZIP_PATH}" ]; then
+            echo "Expected zip not found at ${ZIP_PATH}"
+            exit 1
+          fi
+          echo "ZIP_PATH=${ZIP_PATH}" >> "${GITHUB_ENV}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FRAUDBUSTER_v${{ env.VERSION }}
+          path: ${{ env.ZIP_PATH }}
+          if-no-files-found: error
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" "${ZIP_PATH}" --clobber
+          else
+            gh release create "${TAG}" "${ZIP_PATH}" \
+              --title "FRAUDBUSTER ${TAG}" \
+              --target "${GITHUB_SHA}" \
+              --generate-notes
+          fi
